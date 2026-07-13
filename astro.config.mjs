@@ -43,6 +43,7 @@ export default defineConfig({
 						{ label: 'Authentication', slug: 'api/authentication' },
 						{ label: 'Endpoint reference', slug: 'api/endpoints' },
 						{ label: 'Browser flow', slug: 'api/browser-flow' },
+						{ label: 'Private downloads (DLP)', slug: 'api/private-downloads-dlp' },
 						{ label: 'Schemas & examples', slug: 'api/schemas' },
 						{ label: 'Errors & media lifecycle', slug: 'api/errors-media' },
 						{ label: 'Architecture & modules', slug: 'api/architecture' },

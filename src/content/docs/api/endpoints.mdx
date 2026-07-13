@@ -43,6 +43,20 @@ All administrator routes require `X-API-Key`.
 Compose already owns service lifecycle. Dynamic container mode mounts the Docker socket and can build/run modules; leave it disabled in the canonical Compose deployment unless that behavior is explicitly required.
 </Aside>
 
+## Browser DLP routes
+
+These routes use the signed browser bearer session, not `X-API-Key`, and are available only when the internal protocol-v2 DLP service is enabled and healthy.
+
+| Method and path | Purpose |
+| --- | --- |
+| `GET /web/capabilities` | Advertise DLP availability, protocol version, and fixed qualities |
+| `POST /web/dlp/jobs` | Allocate a job and ephemeral worker public key |
+| `POST /web/dlp/jobs/{jobId}/submit` | Submit one validated URL, fixed quality, and optional encrypted cookies |
+| `GET /web/dlp/jobs/{jobId}` | Poll queue, execution, progress, expiry, or failure state |
+| `GET /web/dlp/jobs/{jobId}/file` | Stream the completed temporary file with `no-store` caching |
+
+See [Private downloads (DLP)](/api/private-downloads-dlp/) for the protocol, request bodies, cryptography, ownership rules, and state transitions.
+
 ## OpenAPI discovery
 
 FastAPI supplies:

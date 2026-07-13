@@ -41,6 +41,21 @@ SPOTIFY_CLIENT_SECRET=REPLACE_IF_USED
 
 Mount YouTube cookie files read-only through `SHORTS_COOKIES_DIR` only when required. Protect their directory as a credential store.
 
+## Optional DLP profile
+
+Private downloads require the separate `dlp` Compose profile. Keep `DLP_ENABLED=false`, generate distinct gateway/owner/Redis secrets, create `/srv/pinchana-dlp/jobs` with mode `0711`, and pin the API, orchestrator, worker, and VPN images before starting it.
+
+```sh
+docker compose --profile dlp pull dlp-redis dlp-vpn dlp-api dlp-orchestrator
+docker pull "$DLP_WORKER_IMAGE"
+python scripts/dlp-prod-preflight.py --env-file .env --phase infra
+docker compose --profile dlp up -d dlp-redis dlp-vpn dlp-api dlp-orchestrator
+```
+
+Require every DLP service to become healthy and complete anonymous plus encrypted-cookie canaries on a non-public instance. Then set `DLP_ENABLED=true`, recreate only `server`, run the `enable` preflight phase, and confirm authenticated `/web/capabilities` reports protocol 2. Roll back by setting the flag false and recreating `server`; active jobs can finish or expire independently.
+
+See [Private downloads (DLP)](/api/private-downloads-dlp/) and the repository's [production rollout runbook](https://github.com/Pinchana/pinchana-api/blob/main/docs/DLP_PRODUCTION_ROLLOUT.md).
+
 ## 3. Restrict networking
 
 Production scraper services and the gateway share Gluetun's network namespace. The supplied Compose file publishes API, scraper, and control mappings on Gluetun for local operability; **do not expose them all to the Internet**.

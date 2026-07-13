@@ -23,6 +23,32 @@ Values below are derived from `.env.example`, both Compose files, module registr
 
 Never commit any value in this table. The instance certificate is public, but the project's Ed25519 **private signing key** must never be deployed to an instance.
 
+## Private download DLP
+
+The DLP profile is optional and defaults off. Its three secrets must be distinct, non-placeholder values in production.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `DLP_ENABLED` | `false` | Advertise and accept browser DLP jobs only when internal health also passes |
+| `DLP_URL` | `http://dlp-api:8080` in Compose | Internal DLP API origin; never publish it |
+| `DLP_GATEWAY_TOKEN` | empty/disabled placeholder | Gateway-only service credential, minimum 32 characters |
+| `DLP_OWNER_SECRET` | empty | HMAC secret for deriving opaque ownership from the signed session nonce |
+| `DLP_REDIS_PASSWORD` | disabled placeholder | Password for internal ephemeral Redis |
+| `DLP_HOST_JOBS_DIR` | `/tmp/pinchana-dlp-jobs` Compose fallback | Absolute host path for temporary per-job output; production example uses `/srv/pinchana-dlp/jobs` |
+| `DLP_API_IMAGE` | GHCR `dlp-api:latest` | DLP API image; pin a release tag/digest in production |
+| `DLP_ORCHESTRATOR_IMAGE` | GHCR `dlp-orchestrator:latest` | Docker-socket orchestrator image; pin it |
+| `DLP_WORKER_IMAGE` | GHCR `dlp-worker:latest` | Ephemeral worker image; pin the same release |
+| `DLP_VPN_IMAGE` | `qmcgaw/gluetun:v3.40.0` | Dedicated DLP VPN/proxy image |
+| `DLP_WORKER_NETWORK` | `pinchana-dlp-worker` | Internal-only dynamic worker network |
+| `DLP_JOB_TTL_SECONDS` | `3600` | Job metadata and temporary file lifetime |
+| `DLP_KEY_TTL_SECONDS` | `300` | Ephemeral worker-key submission window, capped at 600 seconds |
+| `DLP_MAX_ACTIVE_JOBS` | `10` | Global active-job capacity |
+| `DLP_RATE_LIMIT_PER_MINUTE` | `10` | Allocation rate per opaque browser-session owner |
+| `DLP_EXECUTION_TIMEOUT_SECONDS` | `900` | Worker download execution limit |
+| `DLP_MAX_OUTPUT_BYTES` | `2147483648` | Maximum completed output size |
+
+The Compose `dlp` profile also starts internal Redis and a dedicated VPN. Redis uses RAM-backed storage; completed media remains only until job expiry. Run `scripts/dlp-prod-preflight.py` from `pinchana-api` before both infrastructure and enable phases. See [Private downloads (DLP)](/api/private-downloads-dlp/) for the API contract.
+
 ## Gateway, cache, and VPN
 
 | Variable | Default | Meaning |

@@ -1,0 +1,194 @@
+---
+title: Private downloads (DLP)
+description: Protocol-v2 private download jobs, browser cookie encryption, states, trust boundaries, and self-hosting requirements.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+The Pinchana DLP service provides isolated, asynchronous downloads for URLs that should not use the normal scraper pipeline. YouTube and `youtu.be` URLs always use DLP in the official Web app; YouTube Music remains audio-only. Other URLs use DLP only when the user enables **Private mode**.
+
+DLP is **not** a `/scrape` module. It has its own job protocol, Redis state, orchestrator, VPN, temporary output storage, and one ephemeral worker per job.
+
+## Capability discovery
+
+All public DLP gateway routes require the signed browser bearer session described in [Browser flow](/api/browser-flow/). Check capability before showing or calling DLP controls:
+
+```http
+GET /web/capabilities
+Authorization: Bearer PAYLOAD.SIGNATURE
+```
+
+An enabled, healthy protocol-v2 deployment returns:
+
+```json
+{
+  "dlp": {
+    "available": true,
+    "protocol": 2,
+    "qualities": ["best", "1080p", "720p", "480p", "360p", "audio"]
+  }
+}
+```
+
+When the feature flag is off, configuration is incomplete, or the internal DLP API/Redis health check fails, `available` is `false`, `protocol` is `null`, and `qualities` is empty. Clients must fail closed and disable DLP submission.
+
+## Job flow
+
+<Steps>
+1. **Allocate an ephemeral worker key.** `POST /web/dlp/jobs` with the browser bearer session and no request body.
+2. **Optionally encrypt a selected cookie profile.** Use the returned worker public key and protocol-v2 parameters below. Anonymous jobs skip this step.
+3. **Submit once.** `POST /web/dlp/jobs/{jobId}/submit` with a URL, fixed quality, and optional `cookiesEnc`.
+4. **Poll status.** `GET /web/dlp/jobs/{jobId}` until the job becomes `READY`, `FAILED`, or `EXPIRED`.
+5. **Stream the result.** `GET /web/dlp/jobs/{jobId}/file` when ready. The response is an attachment with `Cache-Control: no-store`.
+</Steps>
+
+### Allocate
+
+```http
+POST /web/dlp/jobs
+Authorization: Bearer PAYLOAD.SIGNATURE
+```
+
+```json
+{
+  "jobId": "12345678-1234-4234-9234-123456789abc",
+  "keyId": "wk-0123456789abcdef",
+  "workerPubKey": "BASE64_32_BYTE_X25519_PUBLIC_KEY",
+  "expiresAt": 1783965000
+}
+```
+
+`expiresAt` is the short worker-key deadline, not a permanent file lifetime. Allocate again if encryption or submission cannot finish before it.
+
+### Submit anonymously
+
+```http
+POST /web/dlp/jobs/12345678-1234-4234-9234-123456789abc/submit
+Authorization: Bearer PAYLOAD.SIGNATURE
+Content-Type: application/json
+
+{
+  "url": "https://www.youtube.com/watch?v=abcdefghijk",
+  "quality": "best"
+}
+```
+
+An anonymous worker runs without yt-dlp's `--cookies` option.
+
+### Submit encrypted cookies
+
+```json
+{
+  "url": "https://www.youtube.com/watch?v=abcdefghijk",
+  "quality": "1080p",
+  "cookiesEnc": {
+    "version": 2,
+    "keyId": "wk-0123456789abcdef",
+    "clientPubKey": "BASE64_32_BYTE_X25519_PUBLIC_KEY",
+    "salt": "BASE64_32_BYTE_HKDF_SALT",
+    "iv": "BASE64_12_BYTE_AES_GCM_IV",
+    "ciphertext": "BASE64_AES_GCM_CIPHERTEXT"
+  }
+}
+```
+
+Unknown fields, arbitrary yt-dlp format strings, unsupported quality values, mismatched key IDs, replayed submissions, expired keys, oversized requests, and non-public URLs are rejected.
+
+### Poll and download
+
+```http
+GET /web/dlp/jobs/12345678-1234-4234-9234-123456789abc
+Authorization: Bearer PAYLOAD.SIGNATURE
+```
+
+```json
+{
+  "jobId": "12345678-1234-4234-9234-123456789abc",
+  "status": "RUNNING",
+  "expiresAt": 1783968300,
+  "stage": "downloading",
+  "progress": 42.7
+}
+```
+
+Progress and stage are best-effort. A ready response can also include `size` and `mime`; a failed response includes a sanitized `error`. When ready:
+
+```http
+GET /web/dlp/jobs/12345678-1234-4234-9234-123456789abc/file
+Authorization: Bearer PAYLOAD.SIGNATURE
+```
+
+The gateway streams the internal response instead of buffering the completed file.
+
+## Protocol-v2 encryption
+
+Cookie encryption happens in the unlocked browser after allocation:
+
+1. Generate an ephemeral client X25519 key pair. Native WebCrypto X25519 is preferred; the official client uses a pinned `@noble/curves` fallback when unavailable.
+2. Derive the X25519 shared secret from the client private key and `workerPubKey`.
+3. Generate a new independent 32-byte HKDF salt and 12-byte AES-GCM IV.
+4. Use HKDF-SHA256 with:
+
+   ```text
+   info = pinchana-dlp/cookies/v2/{jobId}/{keyId}
+   ```
+
+5. Encrypt the UTF-8 Netscape cookie file with AES-256-GCM and authenticated additional data:
+
+   ```text
+   pinchana-dlp:v2:{jobId}:{keyId}
+   ```
+
+6. Base64-encode the client public key, salt, IV, and ciphertext for `cookiesEnc`.
+
+The salt and IV are independent random values for every envelope. Never reuse an allocation, key, salt, or IV. The cookie profile must be explicitly selected and filtered to cookies relevant to the submitted hostname before encryption.
+
+<Aside type="caution">
+Do not send Netscape cookie plaintext to a Next.js route, gateway route, server action, analytics system, or log. Only the encrypted envelope crosses those boundaries.
+</Aside>
+
+## Ownership and state
+
+`pinchana-server` validates the signed browser session and derives an opaque owner from its random session nonce. It sends that owner plus a gateway-only service credential to the internal DLP API. Jobs belonging to another browser session appear unknown, including file requests.
+
+The strict state path is:
+
+```text
+ALLOCATING → ALLOCATED → QUEUED → RUNNING → READY
+                    ↘ FAILED / EXPIRED ↙
+```
+
+Allocation states are internal details. Browser clients normally observe `QUEUED`, `RUNNING`, and a terminal state. Submission is one-time; an invalid transition returns `409` rather than restarting or mutating the existing job.
+
+## Network and URL safety
+
+Submission accepts only HTTP(S) URLs without embedded credentials or custom ports. The internal API resolves the hostname and rejects localhost, link-local, private, reserved, and other non-global addresses. Workers run on an internal-only network and reach the Internet through a dedicated DLP VPN proxy that is isolated from normal scraper services.
+
+The orchestrator is the only DLP component with the Docker socket. The API has no socket. Workers use a read-only root filesystem, dropped capabilities, `no-new-privileges`, CPU/memory/PID limits, RAM-backed cookie and temporary directories, an output-only per-job mount, a forced timeout, and automatic removal.
+
+## Trust boundary
+
+Plaintext cookies exist only in the unlocked browser session and the assigned worker's RAM-backed cookie directory. Next.js, `pinchana-server`, Redis, logs, and persistent DLP state receive ciphertext only. Temporary media output is deleted after job expiry; DLP is not a media library.
+
+This design does not protect against XSS, a malicious browser extension, a compromised device, or a malicious instance operator. The browser and assigned worker are trusted endpoints. Imported cookies are user-exported Netscape files; a web page cannot directly read another site's HttpOnly cookies.
+
+## Common responses
+
+| Status | DLP meaning |
+| ---: | --- |
+| `400` | Invalid URL, key relationship, envelope, or request framing |
+| `401` | Missing or invalid signed browser session |
+| `404` | Unknown, expired, or differently owned job/file |
+| `409` | Replay, invalid state transition, or file requested before ready |
+| `410` | Worker key or job expired |
+| `413` | Request exceeded the configured body limit |
+| `422` | Request schema or fixed quality validation failed |
+| `429` | Per-owner allocation rate limit exceeded |
+| `503` | DLP disabled, unhealthy, unavailable, or at capacity |
+| `504` | Ephemeral worker allocation timed out |
+
+## Self-hosting
+
+Keep `DLP_ENABLED=false` while deploying Redis, the DLP API, dedicated VPN, orchestrator, worker image, and temporary host directory. Use distinct non-placeholder secrets for the gateway credential, owner derivation, and Redis password. Pin all DLP images to immutable release tags or digests, run the repository's production preflight, complete an anonymous and authenticated canary, and enable the capability last.
+
+See [API environment reference](/self-hosting/api-environment/#private-download-dlp) and [Deploy the API](/deployment/api/#optional-dlp-profile).

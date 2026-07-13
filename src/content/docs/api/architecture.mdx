@@ -16,6 +16,22 @@ POST /scrape
 
 `IN_PROCESS_PLUGINS` imports Python modules that register routers and is intended primarily for local development. The container registry always reads `MODULES_CONFIG` (default `/app/config/modules.yaml`) and assumes configured services are already running. `CONTAINER_MODE=true` adds a separate Docker-socket-backed manager able to build/start/stop them.
 
+## Private download path
+
+DLP is deliberately outside the module router:
+
+```text
+browser Cookie Vault
+  → allocate through same-origin Next.js and signed Web session
+  → encrypt optional Netscape cookies to the ephemeral worker key
+  → pinchana-server derives an opaque session owner and forwards ciphertext
+  → internal DLP API stores job metadata/ciphertext in Redis
+  → Docker-socket orchestrator starts one hardened worker
+  → worker downloads through the dedicated DLP VPN and streams a temporary file
+```
+
+The DLP API never holds the Docker socket. Normal scraper containers do not join the worker network. See [Private downloads (DLP)](/api/private-downloads-dlp/) for protocol v2 and its trust boundaries.
+
 ## Production networking
 
 The canonical production Compose stack gives the gateway and every scraper `network_mode: container:gluetun`. They therefore share Gluetun's interfaces and reach one another on `localhost` ports. Outbound scraper traffic uses the VPN. Only Gluetun owns published ports in that topology; scraper containers must not declare their own `ports`.
