@@ -162,7 +162,7 @@ Allocation states are internal details. Browser clients normally observe `QUEUED
 
 ## Network and URL safety
 
-Submission accepts only HTTP(S) URLs without embedded credentials or custom ports. The internal API resolves the hostname and rejects localhost, link-local, private, reserved, and other non-global addresses. Workers run on an internal-only network and reach the Internet through a dedicated DLP VPN proxy that is isolated from normal scraper services.
+Submission accepts only HTTP(S) URLs without embedded credentials or custom ports. The internal API resolves the hostname over DNS-over-HTTPS through the dedicated DLP VPN and rejects localhost, link-local, private, reserved, and other non-global addresses. The API remains on internal-only networks. Workers also use the dedicated DLP VPN proxy, isolated from normal scraper services.
 
 The orchestrator is the only DLP component with the Docker socket. The API has no socket. Workers use a read-only root filesystem, dropped capabilities, `no-new-privileges`, CPU/memory/PID limits, RAM-backed cookie and temporary directories, an output-only per-job mount, a forced timeout, and automatic removal.
 
