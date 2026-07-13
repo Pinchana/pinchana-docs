@@ -1,0 +1,79 @@
+---
+title: Deploy the API
+description: Production Linux VPS deployment with Docker Compose, Gluetun, TLS, secrets, health checks, and updates.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+The canonical production deployment is a Linux VPS running Docker Engine and the repository's `docker-compose.yml` with prebuilt GHCR images.
+
+## 1. Prepare the host
+
+Create DNS for `api.example.com`, install current Docker Engine with the Compose plugin, clone recursively, and copy the example configuration:
+
+```sh
+git clone --recursive https://github.com/Pinchana/pinchana-api.git
+cd pinchana-api
+cp .env.example .env
+chmod 600 .env
+```
+
+Ensure `/dev/net/tun` exists. Allocate disk capacity beyond `CACHE_MAX_SIZE_GB`, and allow the VPN's required outbound traffic, DNS, HTTPS, and your administration channel.
+
+## 2. Configure secrets
+
+At minimum, replace placeholders for the WireGuard private key, Gluetun API key, named machine API keys, Turnstile secret, expected Web hostname/action, and a random session secret of at least 32 characters. Add Spotify credentials if that module is enabled. If this origin will be selectable from the official Web app, install its issued public certificate envelope or mounted file.
+
+```ini
+WIREGUARD_PRIVATE_KEY=REPLACE_WITH_WIREGUARD_PRIVATE_KEY
+GLUETUN_API_KEY=REPLACE_WITH_LONG_RANDOM_CONTROL_KEY
+PINCHANA_API_KEYS={"production-client":"REPLACE_WITH_LONG_RANDOM_API_KEY"}
+TURNSTILE_SECRET_KEY=REPLACE_WITH_PRIVATE_TURNSTILE_SECRET
+TURNSTILE_EXPECTED_HOSTNAME=pinchana.example.com
+TURNSTILE_EXPECTED_ACTION=turnstile-spin-v1
+TURNSTILE_SESSION_SECRET=REPLACE_WITH_AT_LEAST_32_RANDOM_CHARACTERS
+SPOTIFY_CLIENT_ID=REPLACE_IF_USED
+SPOTIFY_CLIENT_SECRET=REPLACE_IF_USED
+```
+
+Mount YouTube cookie files read-only through `SHORTS_COOKIES_DIR` only when required. Protect their directory as a credential store.
+
+## 3. Restrict networking
+
+Production scraper services and the gateway share Gluetun's network namespace. The supplied Compose file publishes API, scraper, and control mappings on Gluetun for local operability; **do not expose them all to the Internet**.
+
+- Publish the gateway only through your HTTPS reverse proxy.
+- Bind `API_HOST_PORT` to a locally reachable port and firewall it from external clients if the proxy is on-host.
+- Deny public access to Gluetun control 8000 and scraper ports 8081–8089.
+- Expose only TCP 443 publicly (and 80 only for redirect/ACME if needed).
+- Keep the Docker socket and SSH/administration paths tightly restricted.
+
+Configure Caddy, Nginx, Traefik, or another reverse proxy for `https://api.example.com` → the local gateway port. Preserve streaming and `Range` headers and choose timeouts longer than the gateway's 120-second scrape forwarding timeout.
+
+## 4. Start and verify
+
+<Steps>
+1. Validate interpolation with `docker compose config` and inspect the output without sharing it—it contains secrets.
+2. Pull and start: `docker compose pull && docker compose up -d`.
+3. Inspect `docker compose ps` and `docker compose logs --tail=200 gluetun server`.
+4. Check `curl --fail https://api.example.com/health`.
+5. Send an authenticated `/scrape`, then fetch its media URL with the same `X-API-Key` and a test `Range` header.
+6. From the Web hostname, complete Turnstile and confirm `/web/verify`, scrape, and media playback through the Web BFF.
+</Steps>
+
+## 5. Update safely
+
+Pin explicit GHCR release tags for repeatability, then:
+
+```sh
+docker compose pull
+docker compose up -d
+docker compose ps
+curl --fail https://api.example.com/health
+```
+
+Roll back by restoring previous tags and running `docker compose up -d`. Preserve `scraper-cache`. Never use `docker restart gluetun`; use `docker compose up -d --force-recreate gluetun`, recreate affected dependent services if necessary, and verify health.
+
+<Aside type="caution">
+The public `/health` response includes module details. Administrator routes reveal more operational data and accept powerful actions; their API-key protection does not replace network restrictions and key rotation.
+</Aside>

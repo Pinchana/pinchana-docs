@@ -1,49 +1,36 @@
-# Starlight Starter Kit: Basics
+# Pinchana Docs
 
-[![Built with Starlight](https://astro.badg.es/v2/built-with-starlight/tiny.svg)](https://starlight.astro.build)
+The English documentation hub for [Pinchana Web](https://github.com/Pinchana/pinchana-web) and [Pinchana API](https://github.com/Pinchana/pinchana-api). It is an Astro Starlight site published at <https://docs.pinchana.cc>.
 
-```
-bun create astro@latest -- --template starlight
-```
+## Local development
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+Install dependencies with Bun, then use Astro's background development mode:
 
-## 🚀 Project Structure
-
-Inside of your Astro + Starlight project, you'll see the following folders and files:
-
-```
-.
-├── public/
-├── src/
-│   ├── assets/
-│   ├── content/
-│   │   └── docs/
-│   └── content.config.ts
-├── astro.config.mjs
-├── package.json
-└── tsconfig.json
+```sh
+bun install --frozen-lockfile
+bun run dev
+bunx astro dev status
+bunx astro dev logs
+bunx astro dev stop
 ```
 
-Starlight looks for `.md` or `.mdx` files in the `src/content/docs/` directory. Each file is exposed as a route based on its file name.
+Use `bun run dev:foreground` only when an attached foreground server is useful.
 
-Images can be added to `src/assets/` and embedded in Markdown with a relative link.
+## Authoring
 
-Static assets, like favicons, can be placed in the `public/` directory.
+Documentation lives in `src/content/docs/`. The folder names follow the sidebar groups configured in `astro.config.mjs`: `start`, `api`, `web`, `self-hosting`, and `deployment`. Use lowercase kebab-case filenames, one H1 supplied by frontmatter, descriptive link text, and language tags on code fences. Prefer Starlight Cards, Steps, Tabs, and asides when they make a workflow easier to scan.
 
-## 🧞 Commands
+Document current behavior from source. Mark every credential as a placeholder; never add API keys, Turnstile secrets, WireGuard keys, certificates, Spotify credentials, or cookies. Use these canonical origins:
 
-All commands are run from the root of the project, from a terminal:
+- Web: `https://pinchana.cc`
+- API: `https://api.pinchana.cc`
+- Docs: `https://docs.pinchana.cc`
 
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `bun install`             | Installs dependencies                            |
-| `bun dev`             | Starts local dev server at `localhost:4321`      |
-| `bun build`           | Build your production site to `./dist/`          |
-| `bun preview`         | Preview your build locally, before deploying     |
-| `bun astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `bun astro -- --help` | Get help using the Astro CLI                     |
+Before submitting changes:
 
-## 👀 Want to learn more?
+```sh
+bun run check
+bun run build
+```
 
-Check out [Starlight’s docs](https://starlight.astro.build/), read [the Astro documentation](https://docs.astro.build), or jump into the [Astro Discord server](https://astro.build/chat).
+The build is fully static. Publish the generated `dist/` directory to any static host. No API or Web service is required at documentation runtime.

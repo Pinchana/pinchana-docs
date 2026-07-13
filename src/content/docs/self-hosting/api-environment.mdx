@@ -1,0 +1,76 @@
+---
+title: API environment reference
+description: Complete gateway, module, Compose, VPN, cache, authentication, and scraper configuration.
+---
+
+Values below are derived from `.env.example`, both Compose files, module registry placeholders, and runtime lookups. Compose can override runtime defaults; use the deployed Compose file as the final authority.
+
+## Secrets and Web authentication
+
+| Variable | Default | Used by |
+| --- | --- | --- |
+| `WIREGUARD_PRIVATE_KEY` | empty | Production Gluetun; required for the canonical NordVPN WireGuard stack |
+| `GLUETUN_API_KEY` | `secret-key` | Gluetun control server and gateway client; replace in production |
+| `PINCHANA_API_KEYS` | empty | Gateway named machine keys, JSON object |
+| `TURNSTILE_SECRET_KEY` | empty | Gateway Cloudflare Siteverify secret |
+| `TURNSTILE_EXPECTED_HOSTNAME` | empty | Optional exact hostname check; configure in production |
+| `TURNSTILE_EXPECTED_ACTION` | `turnstile-spin-v1` | Exact widget action check |
+| `TURNSTILE_SESSION_SECRET` | empty | HMAC secret, minimum 32 characters |
+| `TURNSTILE_SESSION_MAX_AGE` | `43200` | Seconds, clamped to 60–86400 |
+| `PINCHANA_INSTANCE_CERTIFICATE` | empty | One-line public signed envelope |
+| `PINCHANA_INSTANCE_CERTIFICATE_FILE` | empty | Alternative mounted envelope file |
+| `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` | empty | Spotify module API credentials |
+
+Never commit any value in this table. The instance certificate is public, but the project's Ed25519 **private signing key** must never be deployed to an instance.
+
+## Gateway, cache, and VPN
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `CACHE_PATH` | `./cache` | Direct-run cache path; Compose uses `/app/cache` |
+| `CACHE_MAX_SIZE_GB` | `10.0` | Per-process view of shared size-based cache limit |
+| `MEDIA_DOWNLOAD_CONCURRENCY` | `4` | Shared storage downloader concurrency; minimum 1 |
+| `YTDLP_CONCURRENCY` | `2` | TikTok/Shorts extraction concurrency; minimum 1 |
+| `VPN_ENABLED` | `true` | Module health/rotation behavior; dev Compose sets false |
+| `VPN_SERVICE_PROVIDER` | `nordvpn` | Gluetun provider in production Compose |
+| `SERVER_COUNTRIES` | empty | Preferred VPN countries, comma-separated |
+| `GLUETUN_CONTROL_URL` | `http://localhost:8000` | Direct-run Gluetun control origin |
+| `GLUETUN_CONTROL_PORT` | `8000` | Internal control port |
+| `CONTAINER_MODE` | `false` | Enable Docker-socket lifecycle manager |
+| `MODULES_CONFIG` | `/app/config/modules.yaml` in container; `.env.example` suggests `./config/modules.yaml` direct | Registry YAML |
+| `IN_PROCESS_PLUGINS` | empty | Comma-separated import module names |
+| `MODULE_NETWORK` | `container:gluetun` | Dynamic manager network |
+| `MODULE_CACHE_VOLUME` | `scraper-cache` | Dynamic manager volume placeholder in registry config |
+
+## Module ports and endpoints
+
+Each `MODULE_<NAME>_PORT` defaults to its service port and each production endpoint defaults to `http://localhost:<port>`: `TIKTOK` 8081, `INSTAGRAM` 8082, `SHORTS` 8083, `SOUNDCLOUD` 8084, `YTMUSIC` 8085, `SPOTIFY` 8086, `DEEZER` 8087, `THREADS` 8088, `TWITTER` 8089.
+
+The corresponding `MODULE_<NAME>_ENDPOINT` overrides the registry target. Development Compose instead reads `DEV_MODULE_<NAME>_ENDPOINT`, defaulting to `http://<compose-service>:<port>` so production localhost values cannot leak into its bridge network.
+
+`config/modules.yaml` also recognizes `MODULE_<NAME>_IMAGE_TAG` and `MODULE_<NAME>_CONTAINER_NAME` for the dynamic manager. These differ from the top-level Compose names/images below.
+
+## Compose images, names, and host ports
+
+| Family | Variables and defaults |
+| --- | --- |
+| Images | `GLUETUN_IMAGE=qmcgaw/gluetun:latest`; `SERVER_IMAGE` and `<NAME>_IMAGE=ghcr.io/pinchana/pinchana-api/<service>:latest` |
+| Container names | `GLUETUN_CONTAINER_NAME=gluetun`, `SERVER_CONTAINER_NAME=pinchana-server`, and service names `pinchana-tiktok`, `pinchana-inst`, `pinchana-shorts`, `pinchana-soundcloud`, `pinchana-ytmusic`, `pinchana-spotify`, `pinchana-deezer`, `pinchana-threads`, `pinchana-twitter` |
+| Host ports | `API_HOST_PORT=8080`, `<NAME>_HOST_PORT=8081` through `8089`, `GLUETUN_CONTROL_HOST_PORT=8000` |
+
+Production publishes these mappings on Gluetun. For a hardened deployment, bind or firewall everything except the reverse-proxied API and avoid exposing 8000/8081–8089 publicly.
+
+## Scraper-specific variables
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `SHORTS_COOKIES_DIR` | `./secrets/yt-cookies` | Host directory mounted read-only into Shorts |
+| `YTDLP_COOKIES_DIR` | `/run/pinchana-cookies` | Runtime cookie directory; Shorts checks named files then any `.txt` |
+| `YTDLP_COOKIE_FILE` | empty | Preferred explicit cookie file |
+| `YTDLP_COOKIE_TMP_DIR` | `/tmp` | Shorts copies a source cookie to a mode-0600 temporary file |
+| `SHORTS_MAX_MB_PER_MINUTE` | `18.0` | Still forwarded by Compose/config for compatibility; current Shorts `_optimize_if_needed` is a no-op and prioritizes source quality |
+| `PROXY` | empty | Read by SoundCloud, YouTube Music, Spotify, and Deezer direct processes |
+| `THREADS_HTTP_CONCURRENCY` | `20` | Threads HTTP client pool size |
+| `THREADS_BROWSER_CONCURRENCY` | `2` | Threads browser fallback semaphore |
+
+`PINCHANA_INST_LIVE` and `PINCHANA_THREADS_LIVE_SHORTCODE` are test-only switches/inputs, not production runtime configuration.

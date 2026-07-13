@@ -1,0 +1,32 @@
+---
+title: Web development
+description: Bun workflow, FFmpeg asset synchronization, checks, environment, and source layout.
+---
+
+Clone and configure the Web repository:
+
+```sh
+git clone https://github.com/Pinchana/pinchana-web.git
+cd pinchana-web
+cp .env.example .env.local
+bun install --frozen-lockfile
+bun run dev
+```
+
+The API must be running at `PINCHANA_API_URL`. For local verification, use Cloudflare's documented test site/secret pair: the public site key belongs in the Web environment and the matching private test secret belongs only in the API environment.
+
+## Asset synchronization
+
+`bun install`, `bun run dev`, and `bun run build` automatically invoke `scripts/sync-ffmpeg-core.mjs`. It copies the FFmpeg core JavaScript, WASM, and worker entry into `public/ffmpeg/`. Do not hand-edit those generated files. Run `bun run sync:ffmpeg` to refresh them after dependency changes.
+
+## Validation
+
+```sh
+bun run lint
+bunx tsc --noEmit
+bun run build
+```
+
+There is no separate test script in the current package. Exercise the verification gate, URL submission, media range playback, both download modes, ZIP on/off, session expiry, and custom instance selection in a browser for changes that affect those paths.
+
+See [Web development and configuration](/web/development/) for environment variables and the project map, and [Browser media pipeline](/web/media-pipeline/) for FFmpeg behavior.

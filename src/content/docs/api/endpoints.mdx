@@ -1,0 +1,54 @@
+---
+title: Endpoint reference
+description: Complete public gateway and administrator route reference.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+The canonical base URL is `https://api.pinchana.cc`. A self-hosted origin exposes the same gateway routes.
+
+## Core routes
+
+### `POST /scrape`
+
+Authenticates with `X-API-Key`, accepts [`ScrapeRequest`](/api/schemas/#scraperequest), selects a module from the URL, and returns [`ScrapeResponse`](/api/schemas/#scraperesponse). Container forwarding uses a 10-second connect and 120-second total timeout.
+
+### `GET /media/{platform}/{post_id}/{filename:path}`
+
+Authenticates with `X-API-Key` and returns a file from the shared cache. `platform` is part of the stable URL shape but file lookup is based on `post_id` and `filename`. Absolute/traversal paths are rejected. FastAPI `FileResponse` provides normal metadata and byte-range behavior through the ASGI server.
+
+### `GET /health`
+
+Public aggregate health check. It calls every configured in-process and container module. A fully healthy gateway returns `200`:
+
+```json
+{"status":"healthy","modules":{"instagram":{"mode":"container","status":"healthy","detail":{"status":"healthy","service":"instagram","vpn":{"status":"running"}}}}}
+```
+
+If any module is unhealthy, the route returns `503` with the module map inside `detail`.
+
+## Administrator routes
+
+All administrator routes require `X-API-Key`.
+
+| Method and path | Success response | Notes |
+| --- | --- | --- |
+| `POST /admin/vpn/rotate` | `{"status":"rotated"}` | Stops/starts the Gluetun tunnel through its control API and waits for a public IP. Rotation has a 90-second in-process cooldown. |
+| `GET /admin/vpn/status` | `{"vpn": {...}, "public_ip":"..."}` | Returns Gluetun status and a nullable public IP. With `VPN_ENABLED=false`, status reports disabled and IP is `null`. |
+| `GET /admin/modules` | In-process patterns and container configuration/running state | Available regardless of dynamic container mode. Source paths and internal endpoints may be sensitive; restrict operational access. |
+| `POST /admin/modules/{name}/start` | `{"status":"started","endpoint":"..."}` | Requires `CONTAINER_MODE=true`; returns `501` otherwise and `404` for an unknown module. |
+| `POST /admin/modules/{name}/stop` | `{"status":"stopped"}` | Requires `CONTAINER_MODE=true`. Stopping an already absent known module is idempotent. |
+
+<Aside type="caution">
+Compose already owns service lifecycle. Dynamic container mode mounts the Docker socket and can build/run modules; leave it disabled in the canonical Compose deployment unless that behavior is explicitly required.
+</Aside>
+
+## OpenAPI discovery
+
+FastAPI supplies:
+
+- `GET /docs` — Swagger UI
+- `GET /redoc` — ReDoc
+- `GET /openapi.json` — the generated OpenAPI document
+
+These reflect the routes and response models mounted in that running instance, including any in-process plugin routers.

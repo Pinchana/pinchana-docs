@@ -1,0 +1,67 @@
+---
+title: Custom API instances
+description: Origin-bound Ed25519 certificates, validation, cookies, expiry, issuance, and trust limits.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+The official Web app accepts a custom origin only when the Pinchana project has issued an unexpired Ed25519 certificate for that exact origin. This prevents the settings field from becoming an arbitrary server-side request proxy.
+
+## Certificate envelope and claims
+
+The API returns this public envelope from `GET /web/identity`:
+
+```json
+{"payload":"BASE64URL_JSON_CLAIMS","signature":"BASE64URL_ED25519_SIGNATURE"}
+```
+
+Decoded claims must contain:
+
+| Claim | Requirement |
+| --- | --- |
+| `issuer` | exactly `pinchana-project` |
+| `protocol` | exactly `1` |
+| `origin` | exact normalized API origin |
+| `turnstile_site_key` | non-empty public widget key for this Web hostname |
+| `issued_at` | Unix seconds; no more than five minutes in the future |
+| `expires_at` | Unix seconds; must be in the future |
+
+Production origins must use HTTPS and contain no credentials, path, query, or fragment. Development permits HTTP. The Web deployment pins the project public key in server-only `PINCHANA_INSTANCE_PUBLIC_KEY` and verifies Ed25519 over the raw payload bytes.
+
+<Steps>
+1. A user enters an origin in Settings.
+2. Browser code fetches `${origin}/web/identity` with CORS.
+3. It posts the origin and envelope to same-origin `POST /api/instance`.
+4. The BFF verifies signature, claims, exact origin, and time bounds.
+5. It stores `payload.signature` in the HttpOnly `pinchana_instance` cookie until certificate expiry, clears the old session, and starts Turnstile with the certified site key.
+</Steps>
+
+## Operator setup
+
+After approval, an operator receives the one-line envelope—not the signing key—and sets either:
+
+```ini
+PINCHANA_INSTANCE_CERTIFICATE='REPLACE_WITH_ISSUED_JSON_ENVELOPE'
+PINCHANA_INSTANCE_CERTIFICATE_FILE=
+```
+
+or mounts a file and configures only `PINCHANA_INSTANCE_CERTIFICATE_FILE`. The API's `/web/identity` response is public, cached for five minutes, and allows all origins because the certificate is already public and cryptographically verified.
+
+## Maintainer issuance
+
+The private Ed25519 key stays offline and outside every repository and deployment. A maintainer can generate a key pair and use the API repository's signing script after reviewing an operator:
+
+```sh
+openssl genpkey -algorithm Ed25519 -out /secure/pinchana-instance-private.pem
+openssl pkey -in /secure/pinchana-instance-private.pem -pubout -out pinchana-instance-public.pem
+
+node scripts/sign-instance-certificate.mjs \
+  /secure/pinchana-instance-private.pem \
+  https://api.example.com \
+  REPLACE_WITH_TURNSTILE_SITE_KEY \
+  90
+```
+
+<Aside type="caution" title="Trust boundary">
+The certificate proves project authorization of an origin and Turnstile configuration at issuance. It prevents copied certificates from working on another origin. It does **not** continuously prove that a third-party host runs unmodified code; that requires hardware-backed remote attestation. Use short validity periods and refuse renewal when trust changes.
+</Aside>

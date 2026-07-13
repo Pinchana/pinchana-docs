@@ -1,0 +1,29 @@
+---
+import { icon } from '@fortawesome/fontawesome-svg-core';
+import {
+	faCode,
+	faDownload,
+	faGlobe,
+	faServer,
+	faWindowMaximize,
+} from '@fortawesome/free-solid-svg-icons';
+
+const icons = {
+	code: faCode,
+	download: faDownload,
+	globe: faGlobe,
+	server: faServer,
+	web: faWindowMaximize,
+} as const;
+
+type Props = {
+	name: keyof typeof icons;
+};
+
+const { name } = Astro.props;
+const svg = icon(icons[name], {
+	attributes: { 'aria-hidden': 'true', focusable: 'false' },
+}).html.join('');
+---
+
+<span class="pinchana-fa" set:html={svg} />

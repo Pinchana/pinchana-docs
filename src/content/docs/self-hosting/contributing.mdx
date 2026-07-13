@@ -1,0 +1,24 @@
+---
+title: Contributing
+description: Repository scope, conventions, verification, and release expectations.
+---
+
+Contributions belong in one of two repositories:
+
+- [Pinchana API](https://github.com/Pinchana/pinchana-api) for the gateway, shared core, scraper services, Compose, and operations.
+- [Pinchana Web](https://github.com/Pinchana/pinchana-web) for the browser interface, BFF routes, FFmpeg pipeline, and legal pages.
+
+Clone API submodules recursively. Make package code changes inside the relevant submodule, commit and push that submodule first, then update the root repository's submodule pointer.
+
+## Expectations
+
+- Keep API code Python 3.13+, async for network I/O, and package names aligned with `pinchana_<name>`.
+- Keep secrets, cookies, generated caches, `__pycache__`, and private certificates out of commits.
+- Preserve the unified request/response contract and authenticated media routes.
+- Keep browser API origins, signed sessions, private keys, and machine credentials server-side.
+- Update `.env.example`, Compose, module config, workflow mapping, and documentation together when adding configuration or a service.
+- Use short imperative or conventional commit subjects such as `fix: ...` and `feat: ...`.
+
+API verification is module-specific: run available pytest suites, import checks, local health, and root-context Docker builds. Web changes should pass `bun run lint`, `bunx tsc --noEmit`, and `bun run build`, followed by focused browser testing. Documentation changes should pass `bun run check` and `bun run build` in `pinchana-docs`.
+
+Pull requests should identify affected services, runtime/config changes, security implications, and exact verification commands. Do not introduce behavior in docs that the current API or Web source does not implement.

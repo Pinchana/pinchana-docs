@@ -1,0 +1,30 @@
+---
+title: Deploy these docs
+description: Build and publish the fully static Astro Starlight documentation site.
+---
+
+The docs have no server adapter and build as Astro static output. Search is generated at build time by Starlight/Pagefind and runs entirely from published assets.
+
+```sh
+git clone https://github.com/Pinchana/pinchana-docs.git
+cd pinchana-docs
+bun install --frozen-lockfile
+bun run check
+bun run build
+```
+
+Publish the contents of `dist/` to any static host: Cloudflare Pages, GitHub Pages with the correct custom-domain setup, Netlify, Vercel static hosting, object storage plus CDN, or a conventional web server.
+
+## Host settings
+
+- Build command: `bun run build`
+- Output directory: `dist`
+- Canonical site: `https://docs.pinchana.cc`
+- Required runtime variables: none
+- Required API/Web connectivity at runtime: none
+
+Configure `docs.pinchana.cc` DNS and HTTPS at the static provider. Serve generated HTML with normal compression and cache fingerprinted assets for a long duration; allow HTML to revalidate so navigation updates propagate promptly.
+
+## Release check
+
+After publishing, verify the splash page, all five sidebar groups, the final **Deployment** group, search results from each section, canonical tags, code-copy controls, edit links, last-updated data, mobile navigation, keyboard focus, wide tables, and a direct deep-link refresh. The built output must not contain private keys, real API/Turnstile/VPN/Spotify credentials, cookies, or instance envelopes.

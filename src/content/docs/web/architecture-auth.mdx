@@ -1,0 +1,38 @@
+---
+title: Web architecture and authentication
+description: The Next.js BFF, Turnstile page gate, same-origin proxy, and HttpOnly session flow.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+Pinchana Web is a Next.js 16 server-backed application, not a static client for the API. Its route handlers form a backend-for-frontend (BFF): browser code calls only `/api/...` on the Web origin, while server code knows the selected API origin and holds signed sessions in HttpOnly cookies.
+
+```text
+Browser                       Next.js BFF                         API
+  │ GET /api/session ────────────┼─ Bearer from HttpOnly cookie ──→ /web/session
+  │ Turnstile token              │
+  ├─ POST /api/verify ───────────┼────────────────────────────────→ /web/verify
+  │                Set-Cookie: pinchana_web_session (HttpOnly)
+  ├─ POST /api/scrape ───────────┼─ Bearer + JSON ────────────────→ /web/scrape
+  └─ GET /api/media/... ─────────┼─ Bearer + Range ───────────────→ /web/media/...
+```
+
+## Page-load gate
+
+<Steps>
+1. `GET /api/instance` resolves the default or verified custom origin and returns its public Turnstile site key.
+2. `GET /api/session` checks `pinchana_web_session`. A valid response unlocks the form; `401` shows the Turnstile challenge.
+3. The browser renders Turnstile explicitly with dark theme and action `turnstile-spin-v1`, then posts its one-use token to `/api/verify`.
+4. The BFF forwards the token to the selected API. On success it stores `access_token` in `pinchana_web_session` with `HttpOnly`, `SameSite=Strict`, path `/`, high priority, and `Secure` in production.
+5. Browser JavaScript receives only `{valid:true, expiresAt}`. The cookie value remains unreadable to it.
+</Steps>
+
+The API URL is `PINCHANA_API_URL`, a server-only variable. There is no machine key in the Web app flow. The signed browser session, selected instance certificate, and API origin remain on server-side route handlers; only the Turnstile **site** key is public.
+
+## Same-origin proxying
+
+`POST /api/scrape` validates a browser-supplied HTTP(S) URL, forwards to `/web/scrape` with the signed bearer token, and recursively rewrites `/web/media/...` paths to `/api/media/...`. The media route rejects empty/dot path segments, URL-encodes each segment, forwards range requests, streams the response, and marks it private/no-store.
+
+<Aside type="caution">
+Do not convert `PINCHANA_API_URL`, `PINCHANA_INSTANCE_PUBLIC_KEY`, API keys, Turnstile secrets, or browser session values into `NEXT_PUBLIC_...` variables. Only `NEXT_PUBLIC_TURNSTILE_SITE_KEY` is designed for browser delivery.
+</Aside>

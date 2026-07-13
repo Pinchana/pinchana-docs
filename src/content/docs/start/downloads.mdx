@@ -1,0 +1,37 @@
+---
+title: Downloads
+description: Individual saves, ZIP archives, autosave, browser-side audio conversion, and fallbacks.
+---
+
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+
+All saving happens in the browser. The Web server streams authenticated media from the API, but the final Blob, ZIP assembly, filename, and browser download action are client-side.
+
+<Tabs>
+<TabItem label="Media">
+
+Pinchana saves `video_url` first, otherwise `audio_url`, otherwise `thumbnail_url`. For carousels it saves every video or image. A TikTok all-image slideshow also includes its separate audio file.
+
+</TabItem>
+<TabItem label="Audio only">
+
+Existing MP3 files pass through. Otherwise Pinchana loads a local FFmpeg WebAssembly engine (about 31 MB) and extracts the first audio stream as a quality-level-2 MP3. Conversion stays on the device.
+
+</TabItem>
+</Tabs>
+
+## One file or many
+
+With **ZIP multiple files** enabled (the default), multiple carousel items or tracks are fetched and assembled with `client-zip`. Audio-only archives receive an `-audio.zip` suffix. If ZIP is disabled, Pinchana triggers one browser save per item; the browser may ask permission for multiple downloads.
+
+**Save immediately** is also enabled by default. Media saves after a result arrives. Audio-only saves after conversion finishes. The **Save** button remains available for another attempt.
+
+Generated names start with `pinchana.cc-`, replace unsafe characters, and are limited to a safe length. Filenames use the URL extension where possible and otherwise fall back to MP4, MP3, or JPG.
+
+## No-audio fallback
+
+If no audio item or video exists, or FFmpeg finds no usable audio stream, the app switches back to **Media** and shows an informational notification. Other conversion failures remain errors and do not silently replace the requested result.
+
+<Aside type="caution" title="Browser limits">
+Large files and ZIPs can consume substantial memory because media is fetched into browser Blobs. Private browsing, mobile memory pressure, content blockers, autoplay rules, cross-origin isolation policies, or disabled WebAssembly/workers can affect preview and conversion. Keep the tab open until the save finishes.
+</Aside>

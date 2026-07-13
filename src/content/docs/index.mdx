@@ -1,40 +1,59 @@
 ---
-title: Welcome to Starlight
-description: Get started building your docs site with Starlight.
-template: splash # Remove or comment out this line to display the site sidebar on this page.
+title: Pinchana Docs
+description: Use, integrate, self-host, and contribute to Pinchana.
+template: splash
 hero:
-  tagline: Congrats on setting up a new Starlight project!
+  tagline: Download supported social video, images, slideshows, and music—or build on the same API.
   image:
-    file: ../../assets/houston.webp
+    file: ../../assets/cat.svg
   actions:
-    - text: Example Guide
-      link: /guides/example/
-      icon: right-arrow
-    - text: Read the Starlight docs
-      link: https://starlight.astro.build
+    - text: Use Pinchana
+      link: https://pinchana.cc
       icon: external
+    - text: Start with the docs
+      link: /start/overview/
+      icon: right-arrow
+    - text: API quickstart
+      link: /api/quickstart/
+      icon: rocket
       variant: minimal
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+import FontAwesomeIcon from '../../components/FontAwesomeIcon.astro';
 
-## Next steps
+## One project, four paths
+
+Pinchana is in **Preview**. Start with the browser interface, then go deeper only when you need to integrate, operate, or contribute.
 
 <CardGrid stagger>
-	<Card title="Update content" icon="pencil">
-		Edit `src/content/docs/index.mdx` to see this page change.
+	<Card title="Download media">
+		<FontAwesomeIcon name="download" />
+		Learn the interface, supported platforms, download modes, and browser limitations.
+		<LinkCard title="Start here" href="/start/overview/" />
 	</Card>
-	<Card title="Change page layout" icon="document">
-		Delete `template: splash` in `src/content/docs/index.mdx` to display a
-		sidebar on this page.
+	<Card title="Build with the API">
+		<FontAwesomeIcon name="code" />
+		Authenticate machine requests and consume one response shape across every module.
+		<LinkCard title="API quickstart" href="/api/quickstart/" />
 	</Card>
-	<Card title="Add new content" icon="add-document">
-		Add Markdown or MDX files to `src/content/docs` to create new pages.
+	<Card title="Understand the Web app">
+		<FontAwesomeIcon name="web" />
+		See how the Next.js BFF keeps origins, signed sessions, and machine credentials server-side.
+		<LinkCard title="Web architecture" href="/web/architecture-auth/" />
 	</Card>
-	<Card title="Configure your site" icon="setting">
-		Edit your `sidebar` and other config in `astro.config.mjs`.
-	</Card>
-	<Card title="Read the docs" icon="open-book">
-		Learn more in [the Starlight Docs](https://starlight.astro.build/).
+	<Card title="Run your own stack">
+		<FontAwesomeIcon name="server" />
+		Deploy the Docker Compose API, a server-backed Web app, and these static docs.
+		<LinkCard title="Self-hosting" href="/self-hosting/operations/" />
 	</Card>
 </CardGrid>
+
+## Official services
+
+- Web application: [pinchana.cc](https://pinchana.cc)
+- Public API: [api.pinchana.cc](https://api.pinchana.cc)
+- Documentation: [docs.pinchana.cc](https://docs.pinchana.cc)
+- Pinchana BOT: [t.me/pinchanabot](https://t.me/pinchanabot)
+
+Source is maintained in the [Pinchana API](https://github.com/Pinchana/pinchana-api) and [Pinchana Web](https://github.com/Pinchana/pinchana-web) repositories.

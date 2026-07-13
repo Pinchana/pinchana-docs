@@ -1,0 +1,36 @@
+---
+title: API authentication
+description: Named machine API keys and the X-API-Key header.
+---
+
+Machine routes use named, independently revocable keys from `PINCHANA_API_KEYS`. The value is a JSON object mapping a client name to a non-empty secret:
+
+```ini
+PINCHANA_API_KEYS={"automation":"REPLACE_WITH_LONG_RANDOM_SECRET","ci":"REPLACE_WITH_ANOTHER_SECRET"}
+```
+
+Send only the secret value:
+
+```http
+X-API-Key: REPLACE_WITH_LONG_RANDOM_SECRET
+```
+
+The gateway compares configured values using constant-time comparison and logs the matching client name. Names are operational labels; they are not sent in the header.
+
+## Protected machine routes
+
+- `POST /scrape`
+- `GET /media/{platform}/{post_id}/{filename}`
+- every `/admin/...` route
+
+`GET /health`, the FastAPI schema UIs, and `GET /web/identity` are public. `/web/...` scrape and media routes use a separate signed bearer session created through Turnstile; machine keys are never accepted as a substitute there.
+
+## Failure behavior
+
+| Situation | Status | Detail |
+| --- | ---: | --- |
+| Missing or unknown header | 401 | `Invalid or missing API key` |
+| Invalid `PINCHANA_API_KEYS` JSON/shape | 503 | `API authentication is not configured` |
+| Empty configuration | 401 | No key can match; configure at least one key before machine use |
+
+Rotate a client by replacing only its value and redeploying/recreating the gateway. Never commit the JSON value, expose it as a `NEXT_PUBLIC_...` variable, place it in query parameters, or use it directly from untrusted browser JavaScript.

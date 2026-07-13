@@ -1,0 +1,34 @@
+---
+title: Errors and media lifecycle
+description: Status codes, cache semantics, authenticated media URLs, and range requests.
+---
+
+## Status codes
+
+| Status | Typical cause |
+| ---: | --- |
+| 200 | Scrape, health, session, admin, or file request succeeded |
+| 400 | No module matches the URL; invalid custom-instance or Web BFF input |
+| 401 | Missing/invalid machine key or browser bearer session |
+| 403 | Turnstile verification failed |
+| 404 | Cached file, module name, or safe path not found |
+| 422 | FastAPI/Pydantic request validation failure |
+| 429 | A module or upstream platform is rate-limiting work |
+| 500 | Unexpected VPN rotation or module failure |
+| 501 | Dynamic container mode is disabled for a start/stop request |
+| 502 | The Web BFF received an invalid verification response |
+| 503 | Module, verification service, gateway client, VPN, auth configuration, identity, or aggregate health unavailable |
+
+FastAPI errors generally use `{"detail": ...}`. An upstream module's error body can appear as a string nested in gateway `detail`. The official Web BFF maps failures to user-safe `{"error":"..."}` messages and hides most server-side details for 5xx errors.
+
+## Cache lifecycle
+
+Each module downloads media into `CACHE_PATH/{post_id}/` and writes `metadata.json` only after a successful result. Concurrent requests for the same key share one in-flight task. Partial directories without metadata are removed before retry. `CACHE_MAX_SIZE_GB` controls a shared size ceiling; before writing, the oldest post directory by file modification time is removed until enough space exists.
+
+The Compose volume `scraper-cache` is shared by the gateway and modules, so a returned relative URL resolves to the gateway's local file. Eviction, operator cleanup, volume replacement, or a missing/incomplete download turns an old URL into `404`.
+
+## Delivery and range requests
+
+Machine clients must include `X-API-Key` on every media fetch. Browser clients use `/web/media/...` with a bearer session; the Next.js route exposes it as `/api/media/...`, forwards the incoming `Range` header, streams the body, and copies `Accept-Ranges`, content range/length/type/disposition, ETag, and last-modified headers. Its response is `Cache-Control: private, no-store`.
+
+Do not publish authenticated cache URLs, assume they are permanent, or strip the query-independent path components. Re-run `/scrape` when media has been evicted.

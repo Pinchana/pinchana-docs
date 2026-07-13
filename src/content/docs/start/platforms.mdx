@@ -1,0 +1,29 @@
+---
+title: Supported platforms
+description: Supported URL families and the result users should expect from each Pinchana module.
+---
+
+The gateway matches URL text against the configured module patterns. Public, accessible posts work best; “supported” does not guarantee that every item is available in every region or at every moment.
+
+| Platform | Recognized URL families | Typical result |
+| --- | --- | --- |
+| TikTok | `tiktok.com`, `vm.tiktok.com`, `vt.tiktok.com` | Video, or an image slideshow/carousel with a separate audio file when available |
+| Instagram | `instagram.com`, `instagr.am` | Post/Reel video, image, or mixed carousel |
+| YouTube Shorts | `youtube.com/shorts`, including `www` and mobile hosts | Video; audio-only mode can extract its audio stream |
+| SoundCloud | `soundcloud.com`, `on.soundcloud.com` | MP3 audio, title/artist, duration, and cover when available |
+| YouTube Music | `music.youtube.com` | MP3 audio, title/artist, duration, and cover when available |
+| Spotify | `open.spotify.com` | Audio metadata and downloaded MP3; requires configured Spotify API credentials on the instance |
+| Deezer | `deezer.com`, `deezer.page.link`, `link.deezer.com` | Audio metadata and downloaded MP3 |
+| Threads | `threads.net`, `threads.com` | Image, video, carousel, or text-only metadata |
+| Twitter / X | `x.com`, `twitter.com`, `vxtwitter.com`, `fxtwitter.com` | Image, video, carousel, or text-only metadata |
+
+## Result shapes
+
+- **Single video:** one playable/downloadable video plus thumbnail and post metadata.
+- **Single image:** one image, represented by `thumbnail_url` when there is no video.
+- **Carousel:** ordered `carousel` items; each item uses `video_url` when it is a video and `thumbnail_url` for its preview or image.
+- **TikTok slideshow:** an all-image carousel and, when found, a separate `audio_url`. Media mode includes both in the saved set.
+- **Music:** a top-level `audio_url`; `cover_url`, `duration`, `title`, and `album` are optional.
+- **Track list:** ordered `tracklist` entries. The Web app names and optionally ZIPs each track. The schema supports this even when a particular module currently returns a single track.
+
+Text-only Threads or X posts can have metadata but no downloadable assets. A platform may also remove media, require login, rate-limit the scraper, or return formats that its current module cannot use.

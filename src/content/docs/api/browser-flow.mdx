@@ -1,0 +1,30 @@
+---
+title: Browser flow
+description: Identity, Turnstile verification, signed sessions, browser scrape, and browser media routes.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+Browser routes intentionally use a different credential from machine clients.
+
+<Steps>
+1. **`GET /web/identity`** returns an optional project-issued certificate envelope, `{"payload":"...","signature":"..."}`. It sends `Access-Control-Allow-Origin: *` and `Cache-Control: public, max-age=300`. Missing or invalid configuration returns `503`.
+2. **`POST /web/verify`** accepts `{"token":"ONE_USE_TURNSTILE_TOKEN"}`. The API calls Cloudflare Siteverify with its secret and a new idempotency UUID. Production validation requires `success=true` plus the configured hostname and action. Success returns `{"access_token":"PAYLOAD.SIGNATURE","expires_at":UNIX_SECONDS}`.
+3. **`GET /web/session`** sends `Authorization: Bearer ACCESS_TOKEN` and returns `{"valid":true,"expires_at":UNIX_SECONDS}`.
+4. **`POST /web/scrape`** sends the same bearer header and `ScrapeRequest`. It returns the standard response with every `/media/...` value recursively rewritten to `/web/media/...`.
+5. **`GET /web/media/{platform}/{post_id}/{filename}`** sends the bearer header and streams the cached file.
+</Steps>
+
+## Signed session format
+
+The access token contains a URL-safe base64 JSON payload and an HMAC-SHA256 signature, separated by a period. Claims contain issued-at (`iat`), expiry (`exp`), and a random nonce. `TURNSTILE_SESSION_SECRET` must contain at least 32 characters. Maximum age defaults to 43,200 seconds, is clamped to 60–86,400 seconds, and falls back to the default when unparsable.
+
+```http
+Authorization: Bearer PAYLOAD.SIGNATURE
+```
+
+Invalid, expired, missing, or wrongly signed sessions return `401`. The API does not set cookies itself; the official Next.js BFF puts this token into an HttpOnly, SameSite=Strict cookie and adds the bearer header server-side.
+
+<Aside type="note">
+Cloudflare's documented test secret keys still require `success=true` but skip hostname/action matching because dummy responses omit production widget metadata.
+</Aside>

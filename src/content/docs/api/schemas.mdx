@@ -1,0 +1,101 @@
+---
+title: Schemas and examples
+description: Unified Pinchana request and response fields with representative payloads.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+## ScrapeRequest
+
+| Field | Type | Required | Meaning |
+| --- | --- | ---: | --- |
+| `url` | validated HTTP URL | yes | Complete target URL. Pydantic rejects malformed/non-HTTP URL input with `422`. |
+
+```json
+{"url":"https://www.instagram.com/p/SHORTCODE/"}
+```
+
+## ScrapeResponse
+
+| Field | Type | Required | Meaning |
+| --- | --- | ---: | --- |
+| `shortcode` | string | yes | Platform post, video, track, or cache identifier |
+| `caption` | string | yes | Caption or title fallback |
+| `author` | string | yes | Handle, channel, or artist |
+| `media_type` | string | yes | Common values include `video`, `image`, `audio`, and `text` |
+| `thumbnail_url` | string | yes | Relative cached preview/image path; may be empty when unavailable |
+| `video_url`, `audio_url`, `cover_url` | string or null | no | Relative cached media paths |
+| `duration` | integer or null | no | Duration in seconds when provided |
+| `title`, `album` | string or null | no | Music metadata when provided |
+| `carousel` | `MediaItem[]` or null | no | Ordered multi-item visual media |
+| `tracklist` | `TrackItem[]` or null | no | Ordered album/playlist tracks |
+
+## Nested items
+
+`MediaItem` always has `index`, `media_type`, and `thumbnail_url`; `video_url` is nullable. `TrackItem` always has `index`, `title`, `artist`, and `audio_url`.
+
+<Tabs>
+<TabItem label="Video">
+
+```json
+{
+  "shortcode": "SHORTCODE", "caption": "Example reel", "author": "creator",
+  "media_type": "video", "thumbnail_url": "/media/instagram/SHORTCODE/thumbnail.jpg",
+  "video_url": "/media/instagram/SHORTCODE/video.mp4", "audio_url": null,
+  "cover_url": null, "duration": null, "title": null, "album": null,
+  "carousel": null, "tracklist": null
+}
+```
+
+</TabItem>
+<TabItem label="Carousel">
+
+```json
+{
+  "shortcode": "POST123", "caption": "A mixed post", "author": "creator",
+  "media_type": "image", "thumbnail_url": "/media/instagram/POST123/thumbnail.jpg",
+  "video_url": null, "audio_url": null, "cover_url": null, "duration": null,
+  "title": null, "album": null,
+  "carousel": [
+    {"index":0,"media_type":"image","thumbnail_url":"/media/instagram/POST123/carousel/0_thumbnail.jpg","video_url":null},
+    {"index":1,"media_type":"video","thumbnail_url":"/media/instagram/POST123/carousel/1_thumbnail.jpg","video_url":"/media/instagram/POST123/carousel/1_video.mp4"}
+  ],
+  "tracklist": null
+}
+```
+
+</TabItem>
+<TabItem label="Slideshow">
+
+```json
+{
+  "shortcode": "7460000000000000000", "caption": "Photo mode", "author": "creator",
+  "media_type": "image", "thumbnail_url": "/media/tiktok/7460000000000000000/thumbnail.jpg",
+  "video_url": null, "audio_url": "/media/tiktok/7460000000000000000/audio.mp3",
+  "cover_url": null, "duration": null, "title": null, "album": null,
+  "carousel": [
+    {"index":0,"media_type":"image","thumbnail_url":"/media/tiktok/7460000000000000000/carousel/0_thumbnail.jpg","video_url":null}
+  ],
+  "tracklist": null
+}
+```
+
+</TabItem>
+<TabItem label="Track list">
+
+```json
+{
+  "shortcode": "ALBUM123", "caption": "Example album", "author": "Artist",
+  "media_type": "audio", "thumbnail_url": "/media/example/ALBUM123/cover.jpg",
+  "video_url": null, "audio_url": null, "cover_url": "/media/example/ALBUM123/cover.jpg",
+  "duration": null, "title": "Example album", "album": "Example album", "carousel": null,
+  "tracklist": [
+    {"index":0,"title":"First track","artist":"Artist","audio_url":"/media/example/ALBUM123/track-0.mp3"}
+  ]
+}
+```
+
+</TabItem>
+</Tabs>
+
+Examples are representative and contain placeholders. Consumers should tolerate nullable optional fields and additional fields from a directly mounted module, but the gateway contract is the base schema above.

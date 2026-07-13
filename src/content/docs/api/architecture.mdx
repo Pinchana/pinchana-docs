@@ -1,0 +1,39 @@
+---
+title: API architecture and modules
+description: Gateway routing, module modes, cache, Gluetun networking, and the supported module matrix.
+---
+
+## Request path
+
+```text
+POST /scrape
+  → validate key and ScrapeRequest
+  → match URL against in-process plugins, then container registry
+  → call /{plugin}/scrape in-process OR {module endpoint}/scrape over HTTP
+  → normalize to ScrapeResponse
+  → serve downloaded paths from the shared cache
+```
+
+`IN_PROCESS_PLUGINS` imports Python modules that register routers and is intended primarily for local development. The container registry always reads `MODULES_CONFIG` (default `/app/config/modules.yaml`) and assumes configured services are already running. `CONTAINER_MODE=true` adds a separate Docker-socket-backed manager able to build/start/stop them.
+
+## Production networking
+
+The canonical production Compose stack gives the gateway and every scraper `network_mode: container:gluetun`. They therefore share Gluetun's interfaces and reach one another on `localhost` ports. Outbound scraper traffic uses the VPN. Only Gluetun owns published ports in that topology; scraper containers must not declare their own `ports`.
+
+All services mount the `scraper-cache` volume at `/app/cache`. Gluetun exposes a private control API at port 8000 to the gateway for status and rotation. Keep that control port and scraper ports away from the public Internet.
+
+## Module matrix
+
+| Module | Internal port | Patterns | Notable runtime needs |
+| --- | ---: | --- | --- |
+| TikTok | 8081 | TikTok domains | yt-dlp concurrency; can return image slideshows/audio |
+| Instagram | 8082 | Instagram domains | Public post extraction; optional opt-in live tests |
+| Shorts | 8083 | YouTube Shorts paths | Optional cookies and size-target transcoding |
+| SoundCloud | 8084 | SoundCloud domains | Music downloader, optional proxy |
+| YouTube Music | 8085 | `music.youtube.com` | yt-dlp cookies/proxy support in shared music helper |
+| Spotify | 8086 | `open.spotify.com` | Spotify client ID and secret |
+| Deezer | 8087 | Deezer/link domains | Music downloader, optional proxy |
+| Threads | 8088 | `threads.net`, `threads.com` | HTTP/browser concurrency controls |
+| Twitter | 8089 | X/Twitter and fixup domains | GraphQL extraction and local media cache |
+
+Module `/health` responses include service and VPN state, with extra readiness fields where relevant (for example Spotify credentials, Shorts cookies, or Threads extraction metrics). The gateway returns `503` if any configured module is unhealthy.

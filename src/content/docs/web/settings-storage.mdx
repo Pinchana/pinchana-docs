@@ -1,0 +1,44 @@
+---
+title: Settings and browser storage
+description: Persisted preferences, cookies, consent state, and privacy behavior.
+---
+
+## Settings
+
+The `pinchana-settings` local-storage object is updated when preferences change:
+
+```json
+{
+  "autoSave": true,
+  "zipMultiple": true,
+  "pawsEnabled": true,
+  "reduceMotion": false,
+  "downloadMode": "media"
+}
+```
+
+| Preference | Default | Effect |
+| --- | ---: | --- |
+| Save immediately | on | Starts the save after processing/conversion |
+| ZIP multiple files | on | Combines carousel or track-list files into one archive |
+| Background paws | on | Shows the decorative floating pattern |
+| Reduce motion | off | Disables interface animations/transitions |
+| Download mode | Media | Remembers Media or Audio only |
+
+The custom API origin is deliberately **not** kept in local storage. Its signed certificate is stored in a protected cookie and the verified origin is derived from certificate claims server-side.
+
+## Browser storage inventory
+
+| Name | Storage | Purpose |
+| --- | --- | --- |
+| `pinchana-settings` | local storage | UI and download preferences |
+| `pinchana_cookie_consent` | local storage | Hides the informational cookie banner after acceptance |
+| `pinchana_web_session` | HttpOnly, SameSite=Strict cookie | Signed API browser-session token |
+| `pinchana_instance` | HttpOnly, SameSite=Strict cookie | Project-signed certificate for the selected custom API |
+| `cf_clearance` (conditional) | Cloudflare cookie | May exist only if Turnstile pre-clearance or a Cloudflare Challenge is enabled |
+
+Session and instance cookies use `Secure` in production and path `/`. The instance cookie's `Max-Age` is the remaining certificate lifetime. Selecting or restoring an instance deletes the current session cookie; restoring default also deletes the instance cookie.
+
+Pinchana Web states that it uses no analytics, advertising, tracking, or marketing cookies. Font Awesome is bundled locally. It does not embed third-party platform login widgets or scripts, although processing a URL necessarily asks the API to contact that platform server-side.
+
+Clearing site data removes preferences, consent state, selected custom instance, and verification session. Downloaded files are outside Pinchana storage and remain wherever the browser saved them.

@@ -1,0 +1,55 @@
+---
+title: Web development and configuration
+description: Run, check, configure, and troubleshoot Pinchana Web locally.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## Requirements and commands
+
+Use Bun and a current Node-compatible runtime supported by Next.js 16:
+
+```sh
+git clone https://github.com/Pinchana/pinchana-web.git
+cd pinchana-web
+cp .env.example .env.local
+bun install --frozen-lockfile
+bun run dev
+```
+
+Before a change is ready:
+
+```sh
+bun run lint
+bunx tsc --noEmit
+bun run build
+```
+
+`postinstall`, `predev`, and `prebuild` synchronize FFmpeg assets. Run `bun run sync:ffmpeg` explicitly when diagnosing missing assets.
+
+## Environment variables
+
+| Variable | Visibility | Required | Meaning |
+| --- | --- | ---: | --- |
+| `PINCHANA_API_URL` | server only | yes | Default API origin, such as `http://localhost:8080` locally or `https://api.pinchana.cc` in production |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | browser/public | yes | Widget site key registered for the Web hostname; an official always-pass test key may be used locally |
+| `PINCHANA_INSTANCE_PUBLIC_KEY` | server only | for custom origins | Ed25519 public PEM used to verify project-issued instance certificates; use `\n` in one-line environment UIs |
+
+The API separately needs the matching Turnstile private secret, expected Web hostname/action, and HMAC session secret. The Web app never receives those values.
+
+## Project map
+
+| Path | Responsibility |
+| --- | --- |
+| `app/page.tsx` | Gate, URL form, results, settings, downloads, and notifications |
+| `app/api/*` | Instance, verify, session, scrape, and media BFF routes |
+| `lib/pinchana.ts` | Cookies, origin selection, certificate verification, error mapping, URL rewriting |
+| `app/lib/audio-converter.ts` | Local FFmpeg load and MP3 conversion |
+| `scripts/sync-ffmpeg-core.mjs` | Copies static core and worker assets |
+| `app/policy`, `app/usage` | Legal/privacy pages |
+
+<Aside type="caution">
+Static export is unsupported. Route handlers, server-only variables, cryptographic verification, streaming proxies, and HttpOnly cookies require a running Next.js server.
+</Aside>
+
+Common local failures are a missing API URL, mismatched site/secret Turnstile pair, hostname/action mismatch, a session secret shorter than 32 characters, unavailable API CORS identity response, or missing synchronized FFmpeg assets.

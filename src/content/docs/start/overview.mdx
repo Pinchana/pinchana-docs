@@ -1,0 +1,38 @@
+---
+title: Pinchana overview
+description: What Pinchana does, who the documentation is for, and how the pieces fit together.
+---
+
+import { Card, CardGrid, LinkCard, Aside } from '@astrojs/starlight/components';
+import FontAwesomeIcon from '../../../components/FontAwesomeIcon.astro';
+
+Pinchana retrieves public media from supported social and music URLs. The browser app at [pinchana.cc](https://pinchana.cc) is the easiest entry point; the API and self-hosting guides build on the same concepts.
+
+<Aside type="caution" title="Preview release">
+Pinchana is currently marked **Preview**. Platform changes, region restrictions, removed posts, and upstream rate limits can affect results. Only download material you are permitted to access and use.
+</Aside>
+
+## Architecture at a glance
+
+```text
+Browser → Next.js same-origin routes → Pinchana gateway → platform scraper
+                       │                       │              │
+                 HttpOnly session       shared cache     Gluetun VPN
+                       └──────── media stream ────────────────┘
+```
+
+The Web app is a backend-for-frontend (BFF). It performs the page-load Turnstile flow, stores the signed browser session in an HttpOnly cookie, submits URLs to `/web/scrape`, rewrites returned media paths, and streams files back through same-origin routes. Machine clients instead call `/scrape` and `/media/...` with an `X-API-Key`.
+
+The gateway selects one scraper module from the URL. Production Compose places the gateway and all scraper services in Gluetun's network namespace and persists their shared downloaded-media cache in a Docker volume.
+
+<CardGrid>
+	<Card title="Using the Web app"><FontAwesomeIcon name="web" />Paste a public URL, choose Media or Audio only, preview the result, and save it locally.</Card>
+	<Card title="Using the API"><FontAwesomeIcon name="code" />Send one request schema and receive one normalized response across all platforms.</Card>
+	<Card title="Operating Pinchana"><FontAwesomeIcon name="server" />Run the gateway, nine modules, shared cache, and optional VPN routing with Docker Compose.</Card>
+</CardGrid>
+
+## Where to go next
+
+<LinkCard title="Walk through the interface" description="Verification, controls, previews, settings, and shortcuts." href="/start/web-interface/" />
+<LinkCard title="Make your first API call" description="cURL, JavaScript, and Python examples." href="/api/quickstart/" />
+<LinkCard title="Deploy the stack" description="Production API, Web, and docs deployment paths." href="/deployment/api/" />

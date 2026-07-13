@@ -1,0 +1,59 @@
+---
+title: Operations
+description: Health, logs, cache persistence, VPN rotation, firewalling, updates, releases, and rollback.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+## Routine checks
+
+```sh
+docker compose ps
+docker compose logs --tail=200 server
+curl --fail https://api.example.com/health
+```
+
+`/health` checks every configured module and returns `503` when any one is unhealthy. Inspect that module and Gluetun together because module health verifies VPN state when `VPN_ENABLED=true`.
+
+```sh
+docker compose logs --tail=200 gluetun shorts
+curl --header 'X-API-Key: REPLACE_WITH_ADMIN_KEY' \
+  https://api.example.com/admin/vpn/status
+```
+
+## Cache and persistence
+
+The named `scraper-cache` volume holds downloaded files and metadata across container replacement. Monitor its disk usage and choose `CACHE_MAX_SIZE_GB` below the host's safe capacity. Eviction is size-based and removes the oldest post directory. Back up the volume only if cached, reproducible media warrants it; credentials and cookies should use separate protected files/secrets.
+
+## VPN rotation
+
+Use `POST /admin/vpn/rotate` for an in-process tunnel rotation. It has a 90-second cooldown and waits up to 60 seconds for a connected tunnel and public IP.
+
+Never run `docker restart gluetun`: it can clear VPN credentials and lead to `AUTH_ERROR`. Recreate it through Compose:
+
+```sh
+docker compose up -d --force-recreate gluetun
+docker compose up -d
+```
+
+Because every production service shares Gluetun's network namespace, recreating it may require dependent services to be recreated as well. Confirm `docker compose ps` and `/health` afterward.
+
+## Firewall and reverse proxy
+
+Expose only HTTPS for the gateway through a TLS reverse proxy. Keep Gluetun control port 8000 and scraper ports 8081–8089 private. Ideally bind the API host port to loopback and let the proxy connect locally; otherwise enforce this with the host/cloud firewall. Protect Docker socket access and leave `CONTAINER_MODE=false` unless dynamic lifecycle control is required.
+
+## Upgrades and rollback
+
+<Steps>
+1. Record deployed tags and back up configuration plus any irreplaceable volume data.
+2. Pull the intended immutable release tag and validate configuration: `docker compose config`.
+3. Run `docker compose pull` and `docker compose up -d`.
+4. Verify Compose state, aggregate health, authenticated scrape, and a range media fetch.
+5. On failure, restore the previous image tags and run `docker compose up -d` again. Avoid deleting the cache volume during rollback.
+</Steps>
+
+Images use `ghcr.io/pinchana/pinchana-api/<service>:<tag>`. `main` publishes `latest`, `stable` publishes `stable`, and a release such as `v0.2.beta` publishes `0.2.beta` plus `stable`. Prefer an explicit release tag for repeatable production rollouts.
+
+<Aside type="caution">
+Compose image/tag changes are application upgrades; Gluetun and scraper behavior also depend on external platforms and VPN provider state. Roll back configuration and images together when their interfaces changed.
+</Aside>

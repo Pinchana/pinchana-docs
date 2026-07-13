@@ -1,0 +1,36 @@
+---
+title: Browser media pipeline
+description: FFmpeg assets, MP3 conversion, ZIP creation, previews, and fallback behavior.
+---
+
+## Authenticated media
+
+The Web app uses plain `<img>`, `<video>`, and `<audio>` elements against `/api/media/...`. Next's image optimizer is intentionally not used because its server-side fetch would not carry the visitor's HttpOnly Pinchana session cookie.
+
+Media assets are derived in this order:
+
+1. A `tracklist` becomes ordered audio files.
+2. A `carousel` becomes one video-or-image file per item; an all-image TikTok slideshow adds top-level audio.
+3. A single result prefers video, then audio, then thumbnail image.
+
+## FFmpeg audio conversion
+
+The client preloads `@ffmpeg/ffmpeg` after mount. `scripts/sync-ffmpeg-core.mjs` copies three static assets into `public/ffmpeg/` during postinstall, before development, and before builds:
+
+- `ffmpeg-core.js`
+- `ffmpeg-core.wasm`
+- `ffmpeg-worker.js`
+
+At runtime those local assets are fetched and loaded into a Web Worker. For non-MP3 input, the command selects the first audio stream, removes video, and encodes MP3 with `libmp3lame` quality 2:
+
+```text
+-i INPUT -map 0:a:0 -vn -c:a libmp3lame -q:a 2 OUTPUT.mp3
+```
+
+Temporary FFmpeg virtual files are deleted after each conversion. Progress and the most recent diagnostic lines drive UI status/errors. Conversion input and output remain in browser memory.
+
+## ZIP creation and saving
+
+`client-zip` is dynamically imported only for multi-file ZIP downloads. The browser fetches authenticated media, builds a Blob, creates a temporary object URL, clicks a download anchor, and revokes the URL after 60 seconds. Disabling ZIP triggers one save action per item.
+
+If FFmpeg reports no audio stream, the UI switches back to original Media and informs the user. Load, worker, memory, or encoding errors stay visible as conversion errors. See [Downloads](/start/downloads/) for end-user behavior.

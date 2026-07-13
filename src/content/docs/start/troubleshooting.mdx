@@ -1,0 +1,37 @@
+---
+title: User troubleshooting
+description: Fix common verification, session, URL, media, conversion, and custom-instance problems.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## Verification does not unlock
+
+- Allow JavaScript and requests to Cloudflare's Turnstile service.
+- Disable an over-aggressive content blocker for the page, then use **Retry verification**.
+- Check the device clock and network. A failed Siteverify service returns a temporary-unavailable message.
+- If the widget reports an expired or failed check, complete the reset widget again.
+
+## The session expired
+
+The default API session lasts 12 hours; an operator can configure 60 seconds through 24 hours. The app detects the expiry time and locks the form. Verify again. Switching API instances also clears the current session because sessions belong to one API origin.
+
+## A URL is unsupported
+
+Use a complete public HTTP(S) post, Reel, Short, track, or playlist URL from the [platform matrix](/start/platforms/). Homepage, profile, login-only, malformed, and unrecognized URLs may be rejected. Short redirect URLs must resolve successfully for their module.
+
+## Media is unavailable
+
+The post may be private, deleted, region-restricted, age-gated, rate-limited, or changed upstream. Try the original URL in a normal browser, retry later, or ask the instance operator to inspect `/health` and module logs. Cached URLs can also disappear after size-based eviction; process the source URL again to rebuild them.
+
+## Audio conversion fails
+
+Keep the page open while the ~31 MB FFmpeg engine loads, ensure WebAssembly and workers are allowed, and try a current desktop browser if a memory-limited mobile browser fails. “No audio track” is expected for silent media and automatically returns to Media mode.
+
+## A custom instance is rejected
+
+Enter only an origin such as `https://api.example.com`—no path, query, fragment, or credentials. Production requires HTTPS. The origin must expose `/web/identity` with a valid, unexpired project-issued certificate whose origin matches exactly, and it must allow that identity response through CORS.
+
+<Aside type="note">
+If the official app works but a custom instance does not, the custom operator must configure its own Turnstile site/secret pair, signed-session secret, public DNS/TLS, and instance certificate. The official Web app cannot repair that server configuration.
+</Aside>

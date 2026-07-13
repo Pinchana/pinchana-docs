@@ -1,0 +1,55 @@
+---
+title: API development
+description: Develop and test Pinchana's Python services and add scraper modules.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+The API root is an orchestration repository. Each `pinchana-*` directory is an independent Python 3.13+ package with its own `pyproject.toml`, `uv.lock`, Dockerfile, and `src/pinchana_<name>/` package. Shared models, storage, music, Docker, plugin, and VPN code live in `pinchana-core`.
+
+## Run one service
+
+Work inside its package:
+
+```sh
+cd pinchana-inst
+uv sync
+VPN_ENABLED=false uv run uvicorn pinchana_inst.main:app --reload --port 8082
+uv run python -c "import pinchana_inst; print('ok')"
+```
+
+Service ports are gateway 8080, TikTok 8081, Instagram 8082, Shorts 8083, SoundCloud 8084, YouTube Music 8085, Spotify 8086, Deezer 8087, Threads 8088, and Twitter 8089. Gluetun control is 8000.
+
+Build a service image from the **repository root** because Dockerfiles copy both core and target service:
+
+```sh
+docker build -f pinchana-inst/Dockerfile -t pinchana-inst .
+docker compose -f docker-compose.dev.yml up -d --build
+```
+
+## Tests
+
+Coverage is currently module-specific. Instagram has the documented suite:
+
+```sh
+cd pinchana-inst
+uv run pytest
+PINCHANA_INST_LIVE=1 uv run pytest
+```
+
+Threads also contains pytest tests. Live tests contact external platforms and must be explicitly enabled/provided with their documented target; ordinary validation should prefer unit tests, imports, and local `/health` requests.
+
+## Add a scraper module
+
+<Steps>
+1. Add a `pinchana-<name>` package/submodule with `src/pinchana_<name>/main.py`, a FastAPI `app`, `POST /scrape`, `GET /health`, Dockerfile, `pyproject.toml`, and `uv.lock`.
+2. Depend on `pinchana-core`, use `ScrapeRequest`/`ScrapeResponse`, store files beneath the shared cache, and return `/media/{platform}/{post_id}/{filename}` paths.
+3. Register URL patterns, port, endpoint, image tag, name, network, volume, and environment in `config/modules.yaml`.
+4. Add matching production and development Compose services. Production shares Gluetun's namespace; development exposes a direct port and uses its Compose DNS endpoint.
+5. Add every configurable port, endpoint, name, image, and module-specific option to `.env.example`.
+6. Extend `.github/workflows/docker-publish.yml` service detection and Dockerfile mapping, then document the platform/result behavior.
+</Steps>
+
+<Aside type="caution">
+Use async network I/O. Do not add root-level formatter/test commands that do not exist, expose scraper ports in production, or commit caches, `__pycache__`, cookies, or credentials.
+</Aside>
