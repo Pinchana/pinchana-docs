@@ -49,9 +49,9 @@ These routes use the signed browser bearer session, not `X-API-Key`, and are ava
 
 | Method and path | Purpose |
 | --- | --- |
-| `GET /web/capabilities` | Advertise DLP availability, protocol version, and fixed qualities |
+| `GET /web/capabilities` | Advertise DLP availability, protocol version, and fixed quality/codec/container choices |
 | `POST /web/dlp/jobs` | Allocate a job and ephemeral worker public key |
-| `POST /web/dlp/jobs/{jobId}/submit` | Submit one validated URL, fixed quality, and optional encrypted cookies |
+| `POST /web/dlp/jobs/{jobId}/submit` | Submit one validated URL, fixed quality/codec/container choices, and optional encrypted cookies |
 | `GET /web/dlp/jobs/{jobId}` | Poll queue, execution, progress, expiry, or failure state |
 | `GET /web/dlp/jobs/{jobId}/file` | Stream the completed temporary file with `no-store` caching |
 

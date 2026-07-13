@@ -25,19 +25,21 @@ An enabled, healthy protocol-v2 deployment returns:
   "dlp": {
     "available": true,
     "protocol": 2,
-    "qualities": ["best", "1080p", "720p", "480p", "360p", "audio"]
+    "qualities": ["best", "8k", "4k", "1440p", "1080p", "720p", "480p", "360p", "240p", "144p", "audio"],
+    "codecs": ["auto", "h264", "av1", "vp9"],
+    "containers": ["auto", "mp4", "webm", "mkv"]
   }
 }
 ```
 
-When the feature flag is off, configuration is incomplete, or the internal DLP API/Redis health check fails, `available` is `false`, `protocol` is `null`, and `qualities` is empty. Clients must fail closed and disable DLP submission.
+When the feature flag is off, configuration is incomplete, or the internal DLP API/Redis health check fails, `available` is `false`, `protocol` is `null`, and all option arrays are empty. Clients must fail closed and disable DLP submission. Older protocol-v2 instances may omit codec/container capability arrays; clients must then omit those optional submission fields.
 
 ## Job flow
 
 <Steps>
 1. **Allocate an ephemeral worker key.** `POST /web/dlp/jobs` with the browser bearer session and no request body.
 2. **Optionally encrypt a selected cookie profile.** Use the returned worker public key and protocol-v2 parameters below. Anonymous jobs skip this step.
-3. **Submit once.** `POST /web/dlp/jobs/{jobId}/submit` with a URL, fixed quality, and optional `cookiesEnc`.
+3. **Submit once.** `POST /web/dlp/jobs/{jobId}/submit` with a URL, fixed quality, optional codec/container preferences, and optional `cookiesEnc`.
 4. **Poll status.** `GET /web/dlp/jobs/{jobId}` until the job becomes `READY`, `FAILED`, or `EXPIRED`.
 5. **Stream the result.** `GET /web/dlp/jobs/{jobId}/file` when ready. The response is an attachment with `Cache-Control: no-store`.
 </Steps>
@@ -69,11 +71,13 @@ Content-Type: application/json
 
 {
   "url": "https://www.youtube.com/watch?v=abcdefghijk",
-  "quality": "best"
+  "quality": "4k",
+  "codec": "av1",
+  "container": "mkv"
 }
 ```
 
-An anonymous worker runs without yt-dlp's `--cookies` option.
+An anonymous worker runs without yt-dlp's `--cookies` option. `codec` and `container` default to `auto`, so existing protocol-v2 clients remain valid.
 
 ### Submit encrypted cookies
 
@@ -81,6 +85,8 @@ An anonymous worker runs without yt-dlp's `--cookies` option.
 {
   "url": "https://www.youtube.com/watch?v=abcdefghijk",
   "quality": "1080p",
+  "codec": "h264",
+  "container": "mp4",
   "cookiesEnc": {
     "version": 2,
     "keyId": "wk-0123456789abcdef",
@@ -92,7 +98,7 @@ An anonymous worker runs without yt-dlp's `--cookies` option.
 }
 ```
 
-Unknown fields, arbitrary yt-dlp format strings, unsupported quality values, mismatched key IDs, replayed submissions, expired keys, oversized requests, and non-public URLs are rejected.
+Unknown fields, arbitrary yt-dlp format strings, unsupported enum values, mismatched key IDs, replayed submissions, expired keys, oversized requests, and non-public URLs are rejected. Codec is a preference: if unavailable at the chosen quality ceiling, the worker falls back to the best available codec. `auto` chooses MP4 for H.264, WebM for AV1/VP9, or the source container when codec is also automatic. Explicit MP4/WebM/MKV requests remux without transcoding, so they preserve quality but cannot make an incompatible codec universally playable.
 
 ### Poll and download
 
