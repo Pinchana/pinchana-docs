@@ -38,14 +38,43 @@ Production origins must use HTTPS and contain no credentials, path, query, or fr
 
 ## Operator setup
 
-After approval, an operator receives the one-line envelope—not the signing key—and sets either:
+After approval, an operator receives the one-line envelope—not the signing key. For the standard Docker Compose deployment, copy the envelope into the API repository's `.env` and quote the complete JSON value:
 
 ```ini
-PINCHANA_INSTANCE_CERTIFICATE='REPLACE_WITH_ISSUED_JSON_ENVELOPE'
+PINCHANA_INSTANCE_CERTIFICATE='{"payload":"BASE64URL_CLAIMS","signature":"BASE64URL_SIGNATURE"}'
 PINCHANA_INSTANCE_CERTIFICATE_FILE=
 ```
 
-or mounts a file and configures only `PINCHANA_INSTANCE_CERTIFICATE_FILE`. The API's `/web/identity` response is public, cached for five minutes, and allows all origins because the certificate is already public and cryptographically verified.
+The API deployment also needs the private Turnstile secret matching the **public site key embedded in the certificate**, plus the Web hostname and action:
+
+```ini
+TURNSTILE_SECRET_KEY=REPLACE_WITH_PRIVATE_TURNSTILE_SECRET
+TURNSTILE_EXPECTED_HOSTNAME=pinchana.example.com
+TURNSTILE_EXPECTED_ACTION=turnstile-spin-v1
+TURNSTILE_SESSION_SECRET=REPLACE_WITH_AT_LEAST_32_RANDOM_CHARACTERS
+```
+
+Apply and verify the configuration through the final public HTTPS origin:
+
+```sh
+docker compose up -d --force-recreate server
+curl --fail --silent https://api.example.com/web/identity
+```
+
+The response must contain the installed `payload` and `signature`. A `503` means the certificate was not available inside the server container. The API's `/web/identity` response is public, cached for five minutes, and allows all origins because the certificate is already public and cryptographically verified.
+
+To use a file instead, mount it read-only into the `server` container and set `PINCHANA_INSTANCE_CERTIFICATE_FILE` to the **container path**. Leave the inline variable empty:
+
+```yaml
+services:
+  server:
+    volumes:
+      - ./secrets/instance-certificate.json:/run/secrets/pinchana-instance-certificate.json:ro
+    environment:
+      PINCHANA_INSTANCE_CERTIFICATE_FILE: /run/secrets/pinchana-instance-certificate.json
+```
+
+The inline value takes precedence when both sources are configured.
 
 ## Maintainer issuance
 
@@ -61,6 +90,10 @@ node scripts/sign-instance-certificate.mjs \
   REPLACE_WITH_TURNSTILE_SITE_KEY \
   90
 ```
+
+The command prints the one-line envelope to standard output. Its second argument is the exact final HTTPS API origin, with no path, query, credentials, or fragment. Its third argument is the public Turnstile site key for the Web hostname—not the private Siteverify secret. Validity may be 1 through 366 days.
+
+Issue and install a replacement before `expires_at`, then recreate the API `server` container. Once an old certificate expires, the Web app rejects it and users must select the instance again after renewal.
 
 <Aside type="caution" title="Trust boundary">
 The certificate proves project authorization of an origin and Turnstile configuration at issuance. It prevents copied certificates from working on another origin. It does **not** continuously prove that a third-party host runs unmodified code; that requires hardware-backed remote attestation. Use short validity periods and refuse renewal when trust changes.

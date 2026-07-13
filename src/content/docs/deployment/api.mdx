@@ -32,9 +32,12 @@ TURNSTILE_SECRET_KEY=REPLACE_WITH_PRIVATE_TURNSTILE_SECRET
 TURNSTILE_EXPECTED_HOSTNAME=pinchana.example.com
 TURNSTILE_EXPECTED_ACTION=turnstile-spin-v1
 TURNSTILE_SESSION_SECRET=REPLACE_WITH_AT_LEAST_32_RANDOM_CHARACTERS
+PINCHANA_INSTANCE_CERTIFICATE='REPLACE_WITH_ISSUED_ONE_LINE_JSON_ENVELOPE'
 SPOTIFY_CLIENT_ID=REPLACE_IF_USED
 SPOTIFY_CLIENT_SECRET=REPLACE_IF_USED
 ```
+
+`PINCHANA_INSTANCE_CERTIFICATE` is required only when this origin should be selectable as a custom instance in the official Web app. A project maintainer issues it for the exact public API origin and the public Turnstile site key. Never copy the Ed25519 signing key to the server. See [Custom API instances](/web/custom-instances/) for issuance, file mounts, verification, and renewal.
 
 Mount YouTube cookie files read-only through `SHORTS_COOKIES_DIR` only when required. Protect their directory as a credential store.
 
@@ -57,8 +60,9 @@ Configure Caddy, Nginx, Traefik, or another reverse proxy for `https://api.examp
 2. Pull and start: `docker compose pull && docker compose up -d`.
 3. Inspect `docker compose ps` and `docker compose logs --tail=200 gluetun server`.
 4. Check `curl --fail https://api.example.com/health`.
-5. Send an authenticated `/scrape`, then fetch its media URL with the same `X-API-Key` and a test `Range` header.
-6. From the Web hostname, complete Turnstile and confirm `/web/verify`, scrape, and media playback through the Web BFF.
+5. If an instance certificate is configured, check `curl --fail https://api.example.com/web/identity` and confirm it returns `payload` and `signature`.
+6. Send an authenticated `/scrape`, then fetch its media URL with the same `X-API-Key` and a test `Range` header.
+7. From the Web hostname, complete Turnstile and confirm `/web/verify`, scrape, and media playback through the Web BFF.
 </Steps>
 
 ## 5. Update safely
