@@ -1,9 +1,11 @@
 ---
 title: Deploy the Web app
-description: Vercel and generic Node/Bun deployment for the server-backed Next.js application.
+description: Run the server-backed Next.js application with Docker Compose and an HTTPS reverse proxy.
 ---
 
-import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+Pinchana Web is hosted with the repository's `docker-compose.yml`. It uses the official `oven/bun:1.3.14-debian` image directly—there is no Pinchana Web image to build or publish. On container start, Bun installs the frozen lockfile, synchronizes browser FFmpeg assets, builds Next.js, and starts the production server.
 
 Pinchana Web requires a running server. It cannot be exported as static HTML because route handlers proxy authenticated requests, verify Ed25519 certificates, read server-only configuration, and manage HttpOnly cookies.
 
@@ -11,38 +13,45 @@ Pinchana Web requires a running server. It cannot be exported as static HTML bec
 
 | Variable | Phase | Exposure |
 | --- | --- | --- |
-| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | build/public | Embedded for the browser; register it for the production Web hostname |
-| `PINCHANA_API_URL` | runtime/server | Default API origin; never public |
-| `PINCHANA_INSTANCE_PUBLIC_KEY` | runtime/server | Ed25519 public verification PEM; preserve newlines or use escaped `\n` |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | container build/public | Embedded for the browser; required and registered for the production Web hostname |
+| `PINCHANA_API_URL` | container runtime/server | Default API origin; required and never public |
+| `PINCHANA_INSTANCE_PUBLIC_KEY` | container runtime/server | Optional Ed25519 public verification PEM; preserve newlines or use escaped `\n` |
+| `WEB_BIND_ADDRESS` | Compose host | Host interface, default `127.0.0.1` |
+| `WEB_HOST_PORT` | Compose host | Reverse-proxy target port, default `3000` |
 
 Configure the selected API separately with the matching Turnstile secret, expected Web hostname `pinchana.example.com`, action `turnstile-spin-v1`, and signed-session secret.
 
-<Tabs>
-<TabItem label="Vercel">
+## Start the service
 
-1. Import `Pinchana/pinchana-web` as a Next.js project.
-2. Use Bun according to the repository lockfile and keep install/build scripts enabled so FFmpeg assets synchronize.
-3. Add the three environment variables to Production (and suitable test values to Preview/Development).
-4. Deploy, then confirm `public/ffmpeg/ffmpeg-core.wasm` and worker assets are served.
-5. Register the final Vercel/custom hostname in Turnstile and set the API's expected hostname exactly.
+<Steps>
+1. Clone [Pinchana Web](https://github.com/Pinchana/pinchana-web) on the Docker host.
+2. Create a mode-0600 `.env` beside `docker-compose.yml` with the required variables. Compose reads this file for interpolation; it is not mounted into the container.
+3. Run `docker compose config` and inspect the effective configuration without sharing it because it contains deployment values.
+4. Start with `docker compose up -d` and follow the initial install/build with `docker compose logs -f web`.
+5. Wait for `docker compose ps` to report the service healthy, then proxy HTTPS to `127.0.0.1:3000`.
+</Steps>
 
-`NEXT_PUBLIC_...` changes require a rebuild. Server-only values should be available to route handlers at runtime; redeploy after changing them so all instances receive consistent configuration.
-
-</TabItem>
-<TabItem label="Node or Bun host">
-
-```sh
-git clone https://github.com/Pinchana/pinchana-web.git
-cd pinchana-web
-bun install --frozen-lockfile
-bun run build
-bun run start
+```ini
+PINCHANA_API_URL=https://api.pinchana.cc
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=REPLACE_WITH_PUBLIC_SITE_KEY
+PINCHANA_INSTANCE_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----\nREPLACE_WITH_PUBLIC_KEY\n-----END PUBLIC KEY-----"
+WEB_BIND_ADDRESS=127.0.0.1
+WEB_HOST_PORT=3000
 ```
 
-Supply the environment through your service manager, run behind an HTTPS reverse proxy, and keep the process supervised. The default Next start port is 3000 unless overridden through normal Next runtime options. Forward streaming responses and byte ranges without buffering the entire media file.
+The source is mounted read-only. Named volumes hold installed dependencies, `.next-build`, and synchronized `public/ffmpeg` assets. Recreate these disposable volumes if a corrupt dependency/build cache survives an update.
 
-</TabItem>
-</Tabs>
+## Reverse proxy and updates
+
+Put Caddy, Nginx, Traefik, or another HTTPS reverse proxy in front of the loopback port. Preserve streaming, disable response buffering for App Router streams, and forward byte-range requests used by the media proxy.
+
+```sh
+git pull --ff-only
+docker compose up -d --force-recreate web
+docker compose logs --tail=100 web
+```
+
+The startup command rebuilds from the checked-out revision. `NEXT_PUBLIC_TURNSTILE_SITE_KEY` is frozen into that build, so changing it also requires recreation. Roll back by checking out the previous revision and force-recreating the service again.
 
 ## Verification checklist
 

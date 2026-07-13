@@ -33,4 +33,9 @@ bun run check
 bun run build
 ```
 
-The build is fully static. Publish the generated `dist/` directory to any static host. No API or Web service is required at documentation runtime.
+The build is fully static and requires no API or Web service at runtime. Production hosting uses `docker-compose.yml`: a one-shot Bun service builds into a named volume and Nginx serves it on `127.0.0.1:4321` by default.
+
+```sh
+docker compose up -d
+docker compose ps
+```

@@ -1,0 +1,36 @@
+services:
+  docs-build:
+    image: oven/bun:1.3.14-debian
+    working_dir: /app
+    restart: "no"
+    command:
+      - sh
+      - -c
+      - bun install --frozen-lockfile && bun run build
+    volumes:
+      - .:/app:ro
+      - docs-node-modules:/app/node_modules
+      - docs-astro-cache:/app/.astro
+      - docs-dist:/app/dist
+
+  docs:
+    image: nginx:1.29-alpine
+    restart: unless-stopped
+    depends_on:
+      docs-build:
+        condition: service_completed_successfully
+    ports:
+      - "${DOCS_BIND_ADDRESS:-127.0.0.1}:${DOCS_HOST_PORT:-4321}:80"
+    volumes:
+      - docs-dist:/usr/share/nginx/html:ro
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  docs-node-modules:
+  docs-astro-cache:
+  docs-dist:
