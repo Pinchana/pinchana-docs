@@ -13,7 +13,7 @@ docker compose ps
 docker compose logs docs-build
 ```
 
-`docs-build` uses `oven/bun:1.3.14-debian`, installs the frozen lockfile, and runs `bun run build` once. The `docs` service waits for a successful build and serves the shared `docs-dist` volume through `nginx:1.29-alpine`.
+`docs-build` uses `oven/bun:1.3.14-debian`, mounts only the required source/configuration paths read-only into a writable `/app`, installs the frozen lockfile, and runs `bun run build` once. The `docs` service waits for a successful build and serves the shared `docs-dist` volume through `nginx:1.29-alpine`.
 
 ## Host settings
 

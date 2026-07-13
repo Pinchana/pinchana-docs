@@ -39,7 +39,7 @@ WEB_BIND_ADDRESS=127.0.0.1
 WEB_HOST_PORT=3000
 ```
 
-The source is mounted read-only. Named volumes hold installed dependencies, `.next-build`, and synchronized `public/ffmpeg` assets. Recreate these disposable volumes if a corrupt dependency/build cache survives an update.
+Application source and configuration are mounted read-only into a writable `/app` workspace. The container copies `public/` into that workspace before install so the FFmpeg synchronization step can write `public/ffmpeg`. Named volumes hold installed dependencies and `.next-build`; recreate these disposable volumes if a corrupt dependency/build cache survives an update.
 
 ## Reverse proxy and updates
 
