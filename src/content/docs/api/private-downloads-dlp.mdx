@@ -5,7 +5,7 @@ description: Protocol-v2 private download jobs, browser cookie encryption, state
 
 import { Steps, Aside } from '@astrojs/starlight/components';
 
-The Pinchana DLP service provides isolated, asynchronous downloads for URLs that should not use the normal scraper pipeline. YouTube and `youtu.be` URLs always use DLP in the official Web app; YouTube Music remains audio-only. Other URLs use DLP only when the user enables **Private mode**.
+The Pinchana DLP service provides isolated, asynchronous YouTube downloads. YouTube and `youtu.be` URLs always use DLP in the official Web app; YouTube Music remains audio-only. Every other URL stays on the normal `/scrape` pipeline, and the DLP API rejects non-YouTube hosts.
 
 DLP is **not** a `/scrape` module. It has its own job protocol, Redis state, orchestrator, VPN, temporary output storage, and one ephemeral worker per job.
 
@@ -25,21 +25,26 @@ An enabled, healthy protocol-v2 deployment returns:
   "dlp": {
     "available": true,
     "protocol": 2,
+    "services": ["youtube"],
     "qualities": ["best", "8k", "4k", "1440p", "1080p", "720p", "480p", "360p", "240p", "144p", "audio"],
     "codecs": ["auto", "h264", "av1", "vp9"],
-    "containers": ["auto", "mp4", "webm", "mkv"]
+    "containers": ["auto", "mp4", "webm", "mkv"],
+    "audioFormats": ["best", "mp3", "ogg", "wav", "opus"],
+    "audioBitrates": ["320", "256", "128", "96", "64", "8"],
+    "dubLanguages": ["af", "az", "id", "..."],
+    "betterAudio": true
   }
 }
 ```
 
-When the feature flag is off, configuration is incomplete, or the internal DLP API/Redis health check fails, `available` is `false`, `protocol` is `null`, and all option arrays are empty. Clients must fail closed and disable DLP submission. Older protocol-v2 instances may omit codec/container capability arrays; clients must then omit those optional submission fields.
+When the feature flag is off, configuration is incomplete, or the internal DLP API/Redis health check fails, `available` is `false`, `protocol` is `null`, option arrays are empty, and `betterAudio` is false. Clients must fail closed. Older protocol-v2 instances may omit newer capability arrays; clients must omit submission fields that were not advertised.
 
 ## Job flow
 
 <Steps>
 1. **Allocate an ephemeral worker key.** `POST /web/dlp/jobs` with the browser bearer session and no request body.
 2. **Optionally encrypt a selected cookie profile.** Use the returned worker public key and protocol-v2 parameters below. Anonymous jobs skip this step.
-3. **Submit once.** `POST /web/dlp/jobs/{jobId}/submit` with a URL, fixed quality, optional codec/container preferences, and optional `cookiesEnc`.
+3. **Submit once.** `POST /web/dlp/jobs/{jobId}/submit` with a YouTube URL, fixed media preferences, and optional `cookiesEnc`.
 4. **Poll status.** `GET /web/dlp/jobs/{jobId}` until the job becomes `READY`, `FAILED`, or `EXPIRED`.
 5. **Stream the result.** `GET /web/dlp/jobs/{jobId}/file` when ready. The response is an attachment with `Cache-Control: no-store`.
 </Steps>
@@ -73,11 +78,28 @@ Content-Type: application/json
   "url": "https://www.youtube.com/watch?v=abcdefghijk",
   "quality": "4k",
   "codec": "av1",
-  "container": "mkv"
+  "container": "mkv",
+  "preferBetterAudio": true,
+  "dubLanguage": "fr"
 }
 ```
 
-An anonymous worker runs without yt-dlp's `--cookies` option. `codec` and `container` default to `auto`, so existing protocol-v2 clients remain valid.
+An anonymous worker runs without yt-dlp's `--cookies` option. `codec` and `container` default to `auto`. `preferBetterAudio` defaults to false and `dubLanguage` defaults to `original`, so existing protocol-v2 clients remain valid.
+
+### Submit audio only
+
+```json
+{
+  "url": "https://music.youtube.com/watch?v=abcdefghijk",
+  "quality": "audio",
+  "audioFormat": "mp3",
+  "audioBitrate": "128",
+  "preferBetterAudio": false,
+  "dubLanguage": "original"
+}
+```
+
+`best` preserves the source audio without transcoding. MP3, OGG/Vorbis, and Opus use the selected lossy bitrate; WAV is lossless and ignores bitrate. A preferred dubbed track applies to video and audio-only jobs and falls back to the original track when unavailable.
 
 ### Submit encrypted cookies
 
@@ -98,7 +120,7 @@ An anonymous worker runs without yt-dlp's `--cookies` option. `codec` and `conta
 }
 ```
 
-Unknown fields, arbitrary yt-dlp format strings, unsupported enum values, mismatched key IDs, replayed submissions, expired keys, oversized requests, and non-public URLs are rejected. Codec is a preference: if unavailable at the chosen quality ceiling, the worker falls back to the best available codec. `auto` chooses MP4 for H.264, WebM for AV1/VP9, or the source container when codec is also automatic. Explicit MP4/WebM/MKV requests remux without transcoding, so they preserve quality but cannot make an incompatible codec universally playable.
+Unknown fields, arbitrary yt-dlp format strings, unsupported enum values or dub codes, non-YouTube hosts, mismatched key IDs, replayed submissions, expired keys, oversized requests, and non-public URLs are rejected. Codec is a preference: if unavailable at the chosen quality ceiling, the worker falls back to the best available codec. `auto` chooses MP4 for H.264, WebM for AV1/VP9, or the source container when codec is also automatic. Explicit MP4/WebM/MKV requests remux without transcoding, so they preserve quality but cannot make an incompatible codec universally playable.
 
 ### Poll and download
 
@@ -168,7 +190,7 @@ Allocation states are internal details. Browser clients normally observe `QUEUED
 
 ## Network and URL safety
 
-Submission accepts only HTTP(S) URLs without embedded credentials or custom ports. The internal API resolves the hostname over DNS-over-HTTPS through the dedicated DLP VPN and rejects localhost, link-local, private, reserved, and other non-global addresses. The API remains on internal-only networks. Workers also use the dedicated DLP VPN proxy, isolated from normal scraper services.
+Submission accepts only YouTube HTTP(S) URLs without embedded credentials or custom ports. Allowed hosts are `youtube.com`, its subdomains, and `youtu.be`; lookalikes are rejected before DNS. The internal API then resolves the hostname over DNS-over-HTTPS through the dedicated DLP VPN and rejects localhost, link-local, private, reserved, and other non-global addresses. The API remains on internal-only networks. Workers also use the dedicated DLP VPN proxy, isolated from normal scraper services.
 
 The orchestrator is the only DLP component with the Docker socket. The API has no socket. Workers use a read-only root filesystem, dropped capabilities, `no-new-privileges`, CPU/memory/PID limits, RAM-backed cookie and temporary directories, an output-only per-job mount, a forced timeout, and automatic removal.
 
