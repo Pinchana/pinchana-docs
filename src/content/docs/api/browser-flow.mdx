@@ -11,9 +11,10 @@ Browser routes intentionally use a different credential from machine clients.
 1. **`GET /web/identity`** returns an optional project-issued certificate envelope, `{"payload":"...","signature":"..."}`. It sends `Access-Control-Allow-Origin: *` and `Cache-Control: public, max-age=300`. Missing or invalid configuration returns `503`.
 2. **`POST /web/verify`** accepts `{"token":"ONE_USE_TURNSTILE_TOKEN"}`. The API calls Cloudflare Siteverify with its secret and a new idempotency UUID. Production validation requires `success=true` plus the configured hostname and action. Success returns `{"access_token":"PAYLOAD.SIGNATURE","expires_at":UNIX_SECONDS}`.
 3. **`GET /web/session`** sends `Authorization: Bearer ACCESS_TOKEN` and returns `{"valid":true,"expires_at":UNIX_SECONDS}`.
-4. **`GET /web/capabilities`** sends the bearer header and advertises optional features. DLP is available only when enabled, correctly configured, and healthy.
-5. **Normal scraper flow:** `POST /web/scrape` sends the same bearer header and `ScrapeRequest`. It returns the standard response with every `/media/...` value recursively rewritten to `/web/media/...`; `GET /web/media/{platform}/{post_id}/{filename}` streams the cached file.
-6. **Private download flow:** allocate, submit, poll, and stream an asynchronous `/web/dlp/jobs/...` job. YouTube always takes this path in the official client; cookies are optional browser-generated ciphertext. See [Private downloads (DLP)](/api/private-downloads-dlp/).
+4. **`GET /web/build`** is public and returns only validated public source revisions baked into the API image. It contains no environment, network, key, or host data.
+5. **`GET /web/capabilities`** sends the bearer header and advertises optional features. DLP is available only when enabled, correctly configured, and healthy.
+6. **Normal scraper flow:** `POST /web/scrape` sends the same bearer header and `ScrapeRequest`. It returns the standard response with every `/media/...` value recursively rewritten to `/web/media/...`; `GET /web/media/{platform}/{post_id}/{filename}` streams the cached file.
+7. **Private download flow:** allocate, submit, poll, and stream an asynchronous `/web/dlp/jobs/...` job. YouTube always takes this path in the official client; cookies are optional browser-generated ciphertext. See [Private downloads (DLP)](/api/private-downloads-dlp/).
 </Steps>
 
 ## Signed session format

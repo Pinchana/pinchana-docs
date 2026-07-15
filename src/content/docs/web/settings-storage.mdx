@@ -11,6 +11,7 @@ The `pinchana-settings` local-storage object is updated when preferences change:
 {
   "autoSave": true,
   "zipMultiple": true,
+  "filenameStyle": "pretty",
   "pawsEnabled": true,
   "reduceMotion": false,
   "downloadMode": "media",
@@ -20,7 +21,8 @@ The `pinchana-settings` local-storage object is updated when preferences change:
   "dlpAudioFormat": "mp3",
   "dlpAudioBitrate": "128",
   "preferBetterAudio": false,
-  "dubLanguage": "original"
+  "dubLanguage": "original",
+  "subtitleLanguage": "none"
 }
 ```
 
@@ -28,6 +30,7 @@ The `pinchana-settings` local-storage object is updated when preferences change:
 | --- | ---: | --- |
 | Save immediately | on | Starts the save after processing/conversion |
 | ZIP multiple files | on | Combines carousel or track-list files into one archive |
+| Filename style | Pretty | Chooses Classic, Basic, Pretty, or Nerdy branded filenames; every style keeps `[pinchana.cc]` |
 | Background paws | on | Shows the decorative floating pattern |
 | Reduce motion | off | Disables interface animations/transitions |
 | Download mode | Media | Remembers Media or Audio only |
@@ -36,6 +39,7 @@ The `pinchana-settings` local-storage object is updated when preferences change:
 | YouTube audio bitrate | 128 kb/s | Used for lossy audio conversion |
 | Better YouTube audio | off | Prefers higher-bitrate/sample-rate audio streams |
 | Preferred dubbed track | Original | Uses the selected language when available |
+| Embedded subtitles | None | Embeds the preferred creator subtitle, falling back to automatic captions, in YouTube video downloads only |
 
 The **YouTube** settings category also contains the encrypted Cookie Vault. Vault labels, domains, and cookie values remain inside its separately encrypted IndexedDB payload; they are never stored in `pinchana-settings`.
 
@@ -53,6 +57,8 @@ The custom API origin is deliberately **not** kept in local storage. Its signed 
 
 Session and instance cookies use `Secure` in production and path `/`. The instance cookie's `Max-Age` is the remaining certificate lifetime. Selecting or restoring an instance deletes the current session cookie; restoring default also deletes the instance cookie.
 
-Pinchana Web states that it uses no analytics, advertising, tracking, or marketing cookies. Font Awesome is bundled locally. It does not embed third-party platform login widgets or scripts, although processing a URL necessarily asks the API to contact that platform server-side.
+Pinchana Web states that it uses no analytics, advertising, tracking, or marketing cookies. Font Awesome is bundled locally. Space Grotesk was downloaded from Google Fonts during development and is served from the same origin, so the browser does not contact Google's font servers. Pinchana does not embed third-party platform login widgets or scripts, although processing a URL necessarily asks the API to contact that platform server-side.
+
+The About diagnostics view is generated on demand. It exposes the public Web revision, sanitized API build manifest, coarse browser/device feature flags, viewport class, and generic processing state. Its copy action omits source URLs, media titles, profile data, custom origins, IP addresses, secrets, and the full browser user agent.
 
 Clearing site data removes preferences, consent state, selected custom instance, and verification session. Downloaded files are outside Pinchana storage and remain wherever the browser saved them.

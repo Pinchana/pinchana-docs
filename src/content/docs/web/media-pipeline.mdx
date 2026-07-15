@@ -5,7 +5,7 @@ description: FFmpeg assets, MP3 conversion, ZIP creation, previews, and fallback
 
 ## Authenticated media
 
-The Web app uses plain `<img>`, `<video>`, and `<audio>` elements against `/api/media/...`. Next's image optimizer is intentionally not used because its server-side fetch would not carry the visitor's HttpOnly Pinchana session cookie.
+The Web app uses plain `<img>`, `<video>`, and `<audio>` elements against `/api/media/...`, wrapped in custom Pinchana video/audio controls. Next's image optimizer is intentionally not used because its server-side fetch would not carry the visitor's HttpOnly Pinchana session cookie.
 
 Media assets are derived in this order:
 
@@ -29,8 +29,18 @@ At runtime those local assets are fetched and loaded into a Web Worker. For non-
 
 Temporary FFmpeg virtual files are deleted after each conversion. Progress and the most recent diagnostic lines drive UI status/errors. Conversion input and output remain in browser memory.
 
+## Preview lifecycle
+
+Starting a normal scrape clears stale media immediately and reuses the loading surface for the eventual preview. The viewport locks its outer height through the loading-to-result transition and adapts the media inside it to the actual aspect ratio, avoiding a second preview object spawning from the center or repeated cached-media resize oscillation.
+
+Pasting or editing a new link invalidates the previous preview. Duplicate submissions for the already-resolved URL and concurrent submit attempts are ignored. Reduced-motion mode skips the layout transition while preserving the same state changes.
+
 ## ZIP creation and saving
 
 `client-zip` is dynamically imported only for multi-file ZIP downloads. The browser fetches authenticated media, builds a Blob, creates a temporary object URL, clicks a download anchor, and revokes the URL after 60 seconds. Disabling ZIP triggers one save action per item.
 
 If FFmpeg reports no audio stream, the UI switches back to original Media and informs the user. Load, worker, memory, or encoding errors stay visible as conversion errors. See [Downloads](/start/downloads/) for end-user behavior.
+
+## YouTube DLP handoff
+
+YouTube bypasses the normal preview/Blob pipeline. `/api/dlp/jobs` allocates and submits a job, polling updates replace the URL input, and a ready job exposes `/api/dlp/jobs/{jobId}/file` to a hidden download anchor. The Next.js route forwards `Range` and `If-Range` and preserves content length, range, type, disposition, ETag, and last-modified headers. The browser therefore streams the attachment into its own download manager instead of retaining the entire file in JavaScript memory.

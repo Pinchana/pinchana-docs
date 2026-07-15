@@ -12,6 +12,8 @@ import { Aside } from '@astrojs/starlight/components';
 - Check the device clock and network. A failed Siteverify service returns a temporary-unavailable message.
 - If the widget reports an expired or failed check, complete the reset widget again.
 
+For operators, local success does not prove production configuration: Cloudflare's always-pass test pair deliberately skips normal hostname/action enforcement in Pinchana. Production needs a real site key registered for the exact Web hostname, its matching private secret on the API, `TURNSTILE_EXPECTED_HOSTNAME` set to the Web hostname without a scheme, and action `turnstile-spin-v1`.
+
 ## The session expired
 
 The default API session lasts 12 hours; an operator can configure 60 seconds through 24 hours. The app detects the expiry time and locks the form. Verify again. Switching API instances also clears the current session because sessions belong to one API origin.
@@ -26,7 +28,15 @@ The post may be private, deleted, region-restricted, age-gated, rate-limited, or
 
 ## Audio conversion fails
 
-Keep the page open while the ~31 MB FFmpeg engine loads, ensure WebAssembly and workers are allowed, and try a current desktop browser if a memory-limited mobile browser fails. “No audio track” is expected for silent media and automatically returns to Media mode.
+For ordinary non-YouTube results, keep the page open while the ~31 MB FFmpeg engine loads, ensure WebAssembly and workers are allowed, and try a current desktop browser if a memory-limited mobile browser fails. “No audio track” is expected for silent media and automatically returns to Media mode. YouTube conversion happens inside its DLP worker instead, so inspect DLP job and worker logs when only YouTube fails.
+
+## A YouTube job is unavailable or stuck
+
+- If the submit button says the instance does not support YouTube, authenticated `/web/capabilities` is reporting DLP unavailable. The operator must enable and health-check the optional stack.
+- If allocation returns unavailable or capacity errors, retry after another job finishes and inspect Redis, DLP API, orchestrator, VPN, and host disk health.
+- If preparation expires, submit the URL again. Worker keys and completed files are intentionally temporary.
+- If the browser download does not start, use the ready-state download button and check download permissions, available device storage, and whether a reverse proxy preserves `Range`, `Content-Range`, and `Content-Disposition`.
+- Large-file warnings describe the completed size only; format merging can temporarily require roughly twice the output limit plus 512 MiB on the DLP host.
 
 ## A custom instance is rejected
 
@@ -35,3 +45,17 @@ Enter only an origin such as `https://api.example.com`—no path, query, fragmen
 <Aside type="note">
 If the official app works but a custom instance does not, the custom operator must configure its own Turnstile site/secret pair, signed-session secret, public DNS/TLS, and instance certificate. The official Web app cannot repair that server configuration.
 </Aside>
+
+## Operator setup failures
+
+| Symptom | Likely cause and fix |
+| --- | --- |
+| DLP services are absent after `docker compose up -d` | They are optional. Use `docker compose --env-file .env --profile dlp up -d ...`; place `--profile` before `up`. |
+| DLP preflight rejects a secret | Replace every placeholder with a distinct random value of at least 32 characters. Do not reuse the gateway, owner, Redis, or Turnstile session secret. |
+| Preflight rejects an image | Use immutable tags/digests, run `scripts/update-dlp-image-pins.py`, pull the pinned VPN image, and ensure all four images exist locally. |
+| Preflight rejects the jobs path | Use an existing absolute, non-symlink, non-world-writable host directory such as `/srv/pinchana-dlp/jobs` with mode `0711`. |
+| DLP is healthy but absent from capabilities | Keep infrastructure running, set `DLP_ENABLED=true`, recreate only `server`, then run the enable preflight. |
+| API returns authentication-not-configured | `PINCHANA_API_KEYS` is invalid JSON or not an object of non-empty named strings. Keep it on one dotenv line and recreate `server`. |
+| Gluetun reports `AUTH_ERROR` | Verify the provider WireGuard key. Recreate through Compose; do not use `docker restart gluetun`. |
+| Web About shows `development` | Bake a full hexadecimal commit with `NEXT_PUBLIC_PINCHANA_WEB_COMMIT="$(git rev-parse HEAD)" docker compose build web`; Compose cannot derive it from `.env`. |
+| Next build reports `EISDIR` for `next-env.d.ts` | Use the current Dockerfile, which removes the stale path before building, and ensure old bind-mounted deployment instructions are no longer in use. |

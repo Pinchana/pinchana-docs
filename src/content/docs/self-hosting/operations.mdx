@@ -25,6 +25,8 @@ curl --header 'X-API-Key: REPLACE_WITH_ADMIN_KEY' \
 
 The named `scraper-cache` volume holds downloaded files and metadata across container replacement. Monitor its disk usage and choose `CACHE_MAX_SIZE_GB` below the host's safe capacity. Eviction is size-based and removes the oldest post directory. Back up the volume only if cached, reproducible media warrants it; credentials and cookies should use separate protected files/secrets.
 
+DLP uses a separate host directory for temporary job output. It can require roughly twice `DLP_MAX_OUTPUT_BYTES` plus 512 MiB during video/audio merging, multiplied by active workers. Do not back up or synchronize it. Before removing expired directories, confirm no containers remain with `docker ps --filter label=pinchana.dlp.job`.
+
 ## VPN rotation
 
 Use `POST /admin/vpn/rotate` for an in-process tunnel rotation. It has a 90-second cooldown and waits up to 60 seconds for a connected tunnel and public IP.
@@ -40,19 +42,38 @@ Because every production service shares Gluetun's network namespace, recreating 
 
 ## Firewall and reverse proxy
 
-Expose only HTTPS for the gateway through a TLS reverse proxy. Keep Gluetun control port 8000 and scraper ports 8081–8089 private. Ideally bind the API host port to loopback and let the proxy connect locally; otherwise enforce this with the host/cloud firewall. Protect Docker socket access and leave `CONTAINER_MODE=false` unless dynamic lifecycle control is required.
+Expose only HTTPS for the gateway through a TLS reverse proxy. Keep Gluetun control port 8000, scraper ports 8081–8089, Redis, DLP API, worker networks, and the orchestrator private. Ideally bind the API host port to loopback and let the proxy connect locally; otherwise enforce this with the host/cloud firewall. Preserve byte-range request/response headers, disable buffering where necessary, and choose upstream timeouts long enough for scrape and attachment streaming. Protect Docker socket access and leave `CONTAINER_MODE=false` unless dynamic lifecycle control is required.
+
+Among the DLP services, only `dlp-orchestrator` should receive `/var/run/docker.sock`. DLP workers are created dynamically and will not appear as a normal Compose service. The DLP API must remain socket-free and resolve target hosts over DNS-over-HTTPS through `dlp-vpn`.
+
+The supplied base Compose file also mounts the socket into `server` for its optional dynamic scraper lifecycle manager, even when `CONTAINER_MODE=false`. A hardened deployment that never uses `/admin/modules/{name}/start` or `/stop` should remove that mount with a maintained Compose override. Merely setting `CONTAINER_MODE=false` disables the routes but does not remove the mounted socket.
+
+## DLP checks and rollback
+
+Use the profile on inspection commands or Compose will hide its optional services:
+
+```sh
+docker compose --env-file .env --profile dlp ps
+docker compose --env-file .env --profile dlp logs --tail=200 \
+  dlp-redis dlp-vpn dlp-api dlp-orchestrator
+docker ps --filter label=pinchana.dlp.job
+```
+
+If the private-download path becomes unsafe or unreliable, set `DLP_ENABLED=false` and recreate only `server`. This removes the advertised browser capability without stopping normal scrapers or killing an active worker. Stop the profile only after active jobs finish or expire.
 
 ## Upgrades and rollback
 
 <Steps>
 1. Record deployed tags and back up configuration plus any irreplaceable volume data.
-2. Pull the intended immutable release tag and validate configuration: `docker compose config`.
+2. Pull the intended immutable release tag and validate configuration: `docker compose --env-file .env config --quiet`.
 3. Run `docker compose pull` and `docker compose up -d`.
 4. Verify Compose state, aggregate health, authenticated scrape, and a range media fetch.
 5. On failure, restore the previous image tags and run `docker compose up -d` again. Avoid deleting the cache volume during rollback.
 </Steps>
 
 Images use `ghcr.io/pinchana/pinchana-api/<service>:<tag>`. `main` publishes `latest`, `stable` publishes `stable`, and a release such as `v0.2.beta` publishes `0.2.beta` plus `stable`. Prefer an explicit release tag for repeatable production rollouts.
+
+For DLP, run `scripts/update-dlp-image-pins.py --env-file .env` to resolve API, orchestrator, and worker images to digests, pull the explicitly pinned VPN image, and run the `infra` preflight before changing containers. Enable the capability only after canaries, then run the `enable` preflight.
 
 <Aside type="caution">
 Compose image/tag changes are application upgrades; Gluetun and scraper behavior also depend on external platforms and VPN provider state. Roll back configuration and images together when their interfaces changed.

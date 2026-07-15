@@ -57,6 +57,10 @@ These routes use the signed browser bearer session, not `X-API-Key`, and are ava
 
 See [Private downloads (DLP)](/api/private-downloads-dlp/) for the protocol, request bodies, cryptography, ownership rules, and state transitions.
 
+## Public Web metadata
+
+`GET /web/build` returns `{"version":"preview","commits":{...}}` without authentication. Official images bake the parent API revision and public submodule repository/revision pairs during CI. The gateway validates entry names, hexadecimal commits, and public HTTPS GitHub repository URLs before returning them; malformed or private-looking entries are omitted. The Web BFF sanitizes the response again before showing it in About diagnostics.
+
 ## OpenAPI discovery
 
 FastAPI supplies:

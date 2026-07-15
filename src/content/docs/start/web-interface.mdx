@@ -9,11 +9,13 @@ Open [pinchana.cc](https://pinchana.cc). Pinchana checks an existing session fir
 
 <Steps>
 1. **Paste a public link.** Click the URL bar or paste while focus is outside an input—the app moves clipboard text into the URL bar. HTTP and HTTPS URLs are accepted for validation; the API then decides whether a module supports the URL.
-2. **Choose a mode.** **Media** saves the returned video, image, carousel, slideshow audio, or tracks. **Audio only** keeps MP3 input or extracts the first audio stream from video in your browser.
+2. **Choose a mode.** **Media** saves the returned video, image, carousel, slideshow audio, or tracks. **Audio only** keeps MP3 input or extracts audio locally for ordinary results; YouTube asks its isolated DLP worker for the configured audio output.
 3. **Process it.** Use the arrow button or press <kbd>Enter</kbd>. A notification reports input, session, upstream, conversion, and download errors.
-4. **Preview the result.** Videos use native controls. Images display directly. Carousels provide previous/next controls and item dots. TikTok image slideshows can show separate play/pause and volume controls for their audio. Audio and track results use the audio player.
-5. **Save.** The **Save** button fetches authenticated same-origin media and asks the browser to save it. With **Save immediately** enabled (the default), this happens as soon as processing or audio preparation finishes.
+4. **Preview the result.** Videos and audio use Pinchana's custom players with seeking, playback, mute, and volume controls. Images display directly. Carousels provide previous/next controls and item dots. TikTok image slideshows can include synchronized audio controls.
+5. **Save.** The **Download** button fetches authenticated same-origin media and asks the browser to save it. With **Save immediately** enabled (the default), this happens as soon as processing or audio preparation finishes.
 </Steps>
+
+YouTube does not create the normal large preview. Its job stage and progress replace the URL bar in-place. When preparation finishes, the same area shows the file size and a download button; the browser's own download manager receives the file without first buffering it into the page.
 
 ## Controls
 
@@ -21,11 +23,13 @@ Open [pinchana.cc](https://pinchana.cc). Pinchana checks an existing session fir
 | --- | --- |
 | Mode menu | Switch between original Media and Audio only. The choice is remembered. |
 | Services | Lists TikTok, Instagram, YouTube Shorts, SoundCloud, YouTube Music, Spotify, Deezer, Threads, and Twitter/X. |
-| Settings | Controls general behavior, YouTube video/audio preferences, encrypted cookie profiles, and the API origin. |
+| Settings | Controls general behavior and filename style, YouTube video/audio/subtitle preferences, encrypted cookie profiles, the API origin, and About diagnostics. The “← Settings” header is also the back button on narrow layouts. |
 | YouTube options | YouTube links show an optional cookie-profile selector and a northeast-arrow shortcut to YouTube settings. Other platforms never use DLP. |
 | Preview badge | “Preview version expect bugs” indicates the current release status. |
 | Notifications | Bottom-right toasts report success, information, or failure and include a close button. |
 | Legal links | The footer links to Privacy Policy and Terms of Use, plus the Web repository. |
+
+The About section shows the Preview version, the Web commit when baked into the build, sanitized API module revisions, coarse device capabilities, and current processing state. Copying diagnostics intentionally excludes submitted URLs, media metadata, cookie-vault data, custom API origins, IP addresses, and the full user-agent string.
 
 ## Keyboard and accessibility
 

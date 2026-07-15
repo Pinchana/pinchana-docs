@@ -5,7 +5,7 @@ description: Individual saves, ZIP archives, autosave, browser-side audio conver
 
 import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 
-All saving happens in the browser. The Web server streams authenticated media from the API, but the final Blob, ZIP assembly, filename, and browser download action are client-side.
+The Web server streams authenticated media from the API and the browser chooses where files are saved. Ordinary scraper results and YouTube DLP jobs take different paths so multi-gigabyte YouTube files do not need to fit in page memory.
 
 <Tabs>
 <TabItem label="Media">
@@ -15,23 +15,33 @@ Pinchana saves `video_url` first, otherwise `audio_url`, otherwise `thumbnail_ur
 </TabItem>
 <TabItem label="Audio only">
 
-Existing MP3 files pass through. Otherwise Pinchana loads a local FFmpeg WebAssembly engine (about 31 MB) and extracts the first audio stream as a quality-level-2 MP3. Conversion stays on the device.
+For ordinary scraper results, existing MP3 files pass through. Otherwise Pinchana loads a local FFmpeg WebAssembly engine (about 31 MB) and extracts the first audio stream as a quality-level-2 MP3. Conversion stays on the device.
+
+YouTube uses DLP instead. Its isolated worker downloads the selected audio stream and, when requested, converts it to MP3, OGG, WAV, or Opus with pinned server-side FFmpeg. Choosing **Best** preserves the source audio without conversion.
 
 </TabItem>
 </Tabs>
+
+## YouTube downloads
+
+YouTube and `youtu.be` links use the API instance's optional DLP capability. While the job runs, progress and the current stage replace the URL input; no empty media preview is created. A completed job restores the same bar dimensions with a download button, file size, and a large-file storage warning when applicable.
+
+The file is handed directly to the browser download manager through an authenticated same-origin URL. Full and resumed range requests still require the current HttpOnly Pinchana session. This avoids constructing a multi-gigabyte Blob in the page and lets the browser provide its normal progress, pause, and resume behavior.
+
+**Save immediately** starts the browser download as soon as a YouTube job is ready. The ready state and download button remain available until the temporary job expires, so the user can retry the handoff.
 
 ## One file or many
 
 With **ZIP multiple files** enabled (the default), multiple carousel items or tracks are fetched and assembled with `client-zip`. Audio-only archives receive an `-audio.zip` suffix. If ZIP is disabled, Pinchana triggers one browser save per item; the browser may ask permission for multiple downloads.
 
-**Save immediately** is also enabled by default. Media saves after a result arrives. Audio-only saves after conversion finishes. The **Save** button remains available for another attempt.
+For ordinary results, **Save immediately** is enabled by default. Media saves after a result arrives; audio-only saves after conversion finishes. The **Download** button remains available for another attempt.
 
-Generated names start with `pinchana.cc-`, replace unsafe characters, and are limited to a safe length. Filenames use the URL extension where possible and otherwise fall back to MP4, MP3, or JPG.
+Every generated name contains `[pinchana.cc]`, replaces unsafe characters, and stays within a conservative UTF-8 byte limit. Settings offers Classic, Basic, Pretty, and Nerdy styles; Pretty is the default. Available metadata determines the exact title, author, format, and source identifiers in each style.
 
 ## No-audio fallback
 
 If no audio item or video exists, or FFmpeg finds no usable audio stream, the app switches back to **Media** and shows an informational notification. Other conversion failures remain errors and do not silently replace the requested result.
 
 <Aside type="caution" title="Browser limits">
-Large files and ZIPs can consume substantial memory because media is fetched into browser Blobs. Private browsing, mobile memory pressure, content blockers, autoplay rules, cross-origin isolation policies, or disabled WebAssembly/workers can affect preview and conversion. Keep the tab open until the save finishes.
+Ordinary files, ZIPs, and local audio conversions still use browser Blobs and can consume substantial memory. YouTube DLP downloads avoid that Blob cost, but the device still needs enough free storage for the completed file. Private browsing, mobile storage policy, content blockers, autoplay rules, or disabled WebAssembly/workers can affect previews and ordinary conversion. Keep the tab open until preparation finishes.
 </Aside>

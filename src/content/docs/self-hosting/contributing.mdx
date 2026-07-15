@@ -3,10 +3,12 @@ title: Contributing
 description: Repository scope, conventions, verification, and release expectations.
 ---
 
-Contributions belong in one of two repositories:
+Contributions belong in the repository that owns the behavior:
 
 - [Pinchana API](https://github.com/Pinchana/pinchana-api) for the gateway, shared core, scraper services, Compose, and operations.
+- [Pinchana DLP](https://github.com/Pinchana/pinchana-dlp) for private-download protocol, orchestration, and ephemeral workers; publish its commit before updating the API submodule pointer.
 - [Pinchana Web](https://github.com/Pinchana/pinchana-web) for the browser interface, BFF routes, FFmpeg pipeline, and legal pages.
+- [Pinchana Docs](https://github.com/Pinchana/pinchana-docs) for this Starlight site. Documentation must follow shipped behavior in the owning repository.
 
 Clone API submodules recursively. Make package code changes inside the relevant submodule, commit and push that submodule first, then update the root repository's submodule pointer.
 
@@ -19,6 +21,6 @@ Clone API submodules recursively. Make package code changes inside the relevant 
 - Update `.env.example`, Compose, module config, workflow mapping, and documentation together when adding configuration or a service.
 - Use short imperative or conventional commit subjects such as `fix: ...` and `feat: ...`.
 
-API verification is module-specific: run available pytest suites, import checks, local health, and root-context Docker builds. Web changes should pass `bun run lint`, `bunx tsc --noEmit`, and `bun run build`, followed by focused browser testing. Documentation changes should pass `bun run check` and `bun run build` in `pinchana-docs`.
+API verification is module-specific: run available pytest suites, import checks, local health, and root-context Docker builds. DLP changes should run its protocol/security tests and validate both the standalone build profile and integrated API profile. Web changes should pass `bun run test`, `bun run lint`, `bunx tsc --noEmit`, and `bun run build`, followed by focused manual browser testing when relevant; Playwright is not required. Documentation changes should pass `bun run check` and `bun run build` in `pinchana-docs`.
 
 Pull requests should identify affected services, runtime/config changes, security implications, and exact verification commands. Do not introduce behavior in docs that the current API or Web source does not implement.

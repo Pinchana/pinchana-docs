@@ -32,6 +32,8 @@ An enabled, healthy protocol-v2 deployment returns:
     "audioFormats": ["best", "mp3", "ogg", "wav", "opus"],
     "audioBitrates": ["320", "256", "128", "96", "64", "8"],
     "dubLanguages": ["af", "az", "id", "..."],
+    "filenameStyles": ["classic", "basic", "pretty", "nerdy"],
+    "subtitleLanguages": ["af", "az", "id", "..."],
     "betterAudio": true
   }
 }
@@ -80,11 +82,13 @@ Content-Type: application/json
   "codec": "av1",
   "container": "mkv",
   "preferBetterAudio": true,
-  "dubLanguage": "fr"
+  "dubLanguage": "fr",
+  "filenameStyle": "pretty",
+  "subtitleLanguage": "en"
 }
 ```
 
-An anonymous worker runs without yt-dlp's `--cookies` option. `codec` and `container` default to `auto`. `preferBetterAudio` defaults to false and `dubLanguage` defaults to `original`, so existing protocol-v2 clients remain valid.
+An anonymous worker runs without yt-dlp's `--cookies` option. `codec` and `container` default to `auto`. `preferBetterAudio` defaults to false, `dubLanguage` defaults to `original`, `filenameStyle` defaults to `pretty`, and `subtitleLanguage` defaults to `none`, so existing protocol-v2 clients remain valid. A selected subtitle language is video-only and prefers creator captions before automatic captions.
 
 ### Submit audio only
 
@@ -146,7 +150,7 @@ GET /web/dlp/jobs/12345678-1234-4234-9234-123456789abc/file
 Authorization: Bearer PAYLOAD.SIGNATURE
 ```
 
-The gateway streams the internal response instead of buffering the completed file.
+The gateway streams the internal response instead of buffering the completed file. It forwards full and partial byte ranges plus attachment metadata, so the official Web client can hand large files directly to the browser download manager and repeat or resume requests while the signed session and job remain valid.
 
 ## Protocol-v2 encryption
 
@@ -217,6 +221,8 @@ This design does not protect against XSS, a malicious browser extension, a compr
 
 ## Self-hosting
 
-Keep `DLP_ENABLED=false` while deploying Redis, the DLP API, dedicated VPN, orchestrator, worker image, and temporary host directory. Use distinct non-placeholder secrets for the gateway credential, owner derivation, and Redis password. Pin all DLP images to immutable release tags or digests, run the repository's production preflight, complete an anonymous and authenticated canary, and enable the capability last.
+Keep `DLP_ENABLED=false` while deploying Redis, the DLP API, dedicated VPN, orchestrator, worker image, and temporary host directory. Use distinct non-placeholder secrets for the gateway credential, owner derivation, and Redis password. Pin all DLP images to immutable release tags or digests, run the repository's production preflight, complete an anonymous and encrypted-cookie canary, and enable the capability last.
+
+In the integrated `pinchana-api` deployment, put the global profile option before the Compose command: `docker compose --env-file .env --profile dlp up ...`. A normal `docker compose up -d` omits DLP by design. The standalone `pinchana-dlp` repository is a component-development stack and uses `REDIS_PASSWORD`; production uses the API repository's profile and `DLP_REDIS_PASSWORD`.
 
 See [API environment reference](/self-hosting/api-environment/#private-download-dlp) and [Deploy the API](/deployment/api/#optional-dlp-profile).

@@ -1,0 +1,218 @@
+---
+title: Self-hosting quickstart
+description: Choose a deployment path, generate credentials safely, start the API and Web app, and optionally enable private YouTube downloads.
+---
+
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+
+This guide is the shortest supported path from an empty Linux host to a working Pinchana installation. It deliberately separates the base API/Web deployment from the optional DLP stack so an operator can verify each trust boundary before adding Docker-socket-backed download workers.
+
+## Choose a path
+
+<Tabs>
+<TabItem label="Production">
+
+Use Docker Engine with the Compose v2 plugin, prebuilt API images, and the Web repository's local multi-stage image. Put both services behind HTTPS reverse proxies. This is the path below.
+
+</TabItem>
+<TabItem label="Local development">
+
+Use `docker-compose.dev.yml` for the API or run one Python package with uv. Run the Web app with Bun. Cloudflare's documented Turnstile test keys are appropriate only for local development.
+
+```sh
+git clone --recursive https://github.com/Pinchana/pinchana-api.git
+git clone https://github.com/Pinchana/pinchana-web.git
+
+cd pinchana-api
+cp .env.example .env
+# Configure PINCHANA_API_KEYS and the documented Turnstile test secret.
+docker compose -f docker-compose.dev.yml up -d --build
+
+cd ../pinchana-web
+cp .env.example .env.local
+# Configure the matching public Turnstile test site key.
+bun install --frozen-lockfile
+bun run dev
+```
+
+See [API development](/self-hosting/api-development/) and [Web development](/self-hosting/web-development/) before changing modules or authentication.
+
+</TabItem>
+</Tabs>
+
+## 1. Prepare the host
+
+You need a current Linux host with Git, Docker Engine, the `docker compose` plugin, an HTTPS reverse proxy, and enough storage for the cache plus temporary downloads. The production VPN containers also require `/dev/net/tun`.
+
+```sh
+docker --version
+docker compose version
+test -c /dev/net/tun
+git clone --recursive https://github.com/Pinchana/pinchana-api.git
+git clone https://github.com/Pinchana/pinchana-web.git
+```
+
+Create DNS names such as `api.example.com` and `pinchana.example.com`. Expose only the reverse proxy on ports 80/443. Keep the API's scraper, Gluetun-control, Redis, DLP, and Docker-socket surfaces private.
+
+<Aside type="note">
+The API root contains Git submodules. If it was cloned without `--recursive`, repair it with `git submodule update --init --recursive`. Pulling the parent repository does not automatically update submodule worktrees; use the exact commits recorded by the parent.
+</Aside>
+
+## 2. Create the API environment
+
+```sh
+cd pinchana-api
+umask 077
+cp .env.example .env
+chmod 600 .env
+```
+
+Generate credentials locally. The examples print values for you to copy into `.env`; they do not edit the file or send secrets anywhere.
+
+```sh
+# One machine key. Add more JSON entries for independently revocable clients.
+printf 'PINCHANA_API_KEYS={"bot":"%s"}\n' "$(openssl rand -hex 32)"
+
+# Generate each secret separately. Never reuse one value for another purpose.
+openssl rand -hex 32  # GLUETUN_API_KEY
+openssl rand -hex 32  # TURNSTILE_SESSION_SECRET
+openssl rand -hex 32  # DLP_GATEWAY_TOKEN, only if enabling DLP
+openssl rand -hex 32  # DLP_OWNER_SECRET, only if enabling DLP
+openssl rand -hex 32  # DLP_REDIS_PASSWORD, only if enabling DLP
+```
+
+`PINCHANA_API_KEYS` must remain a one-line JSON object. The names such as `bot` are server-side audit labels; clients send only the corresponding value in `X-API-Key`. To rotate one client, replace only that value and recreate `server`.
+
+At minimum, configure the VPN, machine authentication, and browser authentication:
+
+```ini
+WIREGUARD_PRIVATE_KEY=REPLACE_WITH_PROVIDER_WIREGUARD_PRIVATE_KEY
+GLUETUN_API_KEY=REPLACE_WITH_RANDOM_CONTROL_KEY
+PINCHANA_API_KEYS={"bot":"REPLACE_WITH_RANDOM_MACHINE_KEY"}
+
+TURNSTILE_SECRET_KEY=REPLACE_WITH_PRIVATE_SITEVERIFY_SECRET
+TURNSTILE_EXPECTED_HOSTNAME=pinchana.example.com
+TURNSTILE_EXPECTED_ACTION=turnstile-spin-v1
+TURNSTILE_SESSION_SECRET=REPLACE_WITH_INDEPENDENT_RANDOM_SECRET
+
+# Bind every published Gluetun mapping to the host only.
+API_HOST_PORT=127.0.0.1:8080
+TIKTOK_HOST_PORT=127.0.0.1:8081
+INSTAGRAM_HOST_PORT=127.0.0.1:8082
+SHORTS_HOST_PORT=127.0.0.1:8083
+SOUNDCLOUD_HOST_PORT=127.0.0.1:8084
+YTMUSIC_HOST_PORT=127.0.0.1:8085
+SPOTIFY_HOST_PORT=127.0.0.1:8086
+DEEZER_HOST_PORT=127.0.0.1:8087
+THREADS_HOST_PORT=127.0.0.1:8088
+TWITTER_HOST_PORT=127.0.0.1:8089
+GLUETUN_CONTROL_HOST_PORT=127.0.0.1:8000
+```
+
+The Turnstile **site key** is public and belongs in the Web build. `TURNSTILE_SECRET_KEY` is private and belongs only in the API. `TURNSTILE_EXPECTED_HOSTNAME` is the Web hostname, not the API hostname, and must not contain a scheme or path. Production must use a real widget configured for that hostname; the always-pass test pair is only for local development.
+
+Spotify requires its own client ID and secret. YouTube Shorts cookies are optional and should be mounted read-only from `SHORTS_COOKIES_DIR`. An instance certificate is needed only when the origin should appear as a selectable custom API in an official Web client; its offline Ed25519 signing key never belongs on the deployment host.
+
+The supplied Compose file mounts the Docker socket into `server` for optional dynamic scraper lifecycle routes. If this installation will always keep `CONTAINER_MODE=false`, remove that mount with a local Compose override as a defense-in-depth hardening step; changing the flag alone does not unmount it.
+
+## 3. Start and verify the base API
+
+Render Compose first and inspect it privately—the output contains interpolated secrets.
+
+```sh
+docker compose --env-file .env config --quiet
+docker compose --env-file .env pull
+docker compose --env-file .env up -d
+docker compose --env-file .env ps
+docker compose --env-file .env logs --tail=100 gluetun server
+```
+
+`docker compose up -d` starts the normal scraper stack but not services assigned to the `dlp` profile. Verify `/health`, one authenticated scrape, and a range request before continuing:
+
+```sh
+curl --fail https://api.example.com/health
+curl --fail --request POST https://api.example.com/scrape \
+  --header 'Content-Type: application/json' \
+  --header 'X-API-Key: REPLACE_WITH_MACHINE_KEY' \
+  --data '{"url":"https://www.instagram.com/p/REPLACE_WITH_REAL_PUBLIC_SHORTCODE/"}'
+```
+
+Use a real supported public URL for the smoke test, then fetch one returned `/media/...` path with the same key and `Range: bytes=0-1023`. Your reverse proxy must preserve streaming and byte-range headers.
+
+## 4. Build and start the Web app
+
+```sh
+cd ../pinchana-web
+umask 077
+cp .env.example .env
+chmod 600 .env
+```
+
+Configure the API origin and public widget key:
+
+```ini
+PINCHANA_API_URL=https://api.example.com
+PINCHANA_WEB_IMAGE=pinchana-web:latest
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=REPLACE_WITH_PUBLIC_WIDGET_SITE_KEY
+NEXT_PUBLIC_PINCHANA_WEB_COMMIT=REPLACE_WITH_FULL_WEB_GIT_COMMIT
+WEB_BIND_ADDRESS=127.0.0.1
+WEB_HOST_PORT=3000
+```
+
+Compose cannot execute `git rev-parse` while interpolating `.env`, and repository metadata is intentionally excluded from the Docker build context. Either paste the full commit into `.env` or pass it for the build:
+
+```sh
+NEXT_PUBLIC_PINCHANA_WEB_COMMIT="$(git rev-parse HEAD)" docker compose build web
+docker compose up -d web
+docker compose ps
+```
+
+Proxy `https://pinchana.example.com` to `127.0.0.1:3000`, complete Turnstile, process a URL, preview it, and test a save. Do not put `PINCHANA_API_KEYS`, Turnstile secrets, DLP credentials, cookies, or VPN credentials in the Web environment.
+
+## 5. Optionally add DLP
+
+DLP provides the official Web client's asynchronous YouTube downloads, optional encrypted cookie profiles, selectable formats, subtitles, and large browser-managed files. It is not required for ordinary platform scrapers.
+
+<Aside type="caution" title="Use the integrated production profile">
+Run DLP from the `pinchana-api` repository with its `dlp` Compose profile. The separate `pinchana-dlp` repository and its `REDIS_PASSWORD` variable are for component development. Do not run both stacks against the same networks or job directory.
+</Aside>
+
+Keep `DLP_ENABLED=false` while preparing infrastructure. Set distinct values for `DLP_GATEWAY_TOKEN`, `DLP_OWNER_SECRET`, and `DLP_REDIS_PASSWORD`, then create the host job root:
+
+```sh
+sudo install -d -o root -g root -m 0711 /srv/pinchana-dlp/jobs
+python3 scripts/update-dlp-image-pins.py --env-file .env
+docker pull qmcgaw/gluetun:v3.40.0
+python3 scripts/dlp-prod-preflight.py --env-file .env --phase infra
+```
+
+The image-pin helper pulls the API, orchestrator, and worker `latest` images and replaces their `.env` references with immutable digests. The preflight also requires the VPN image locally, rejects reused or placeholder secrets, requires an absolute non-symlink job directory, and verifies that only the orchestrator receives the Docker socket.
+
+The official GHCR packages are intended to be publicly readable. If the registry still returns `denied` or a pull-rate/authentication error, authenticate Docker to `ghcr.io` with a GitHub token that has `read:packages`, repeat the pin helper, and do not place that registry token in Pinchana's `.env`.
+
+The profile switch is a global Compose option and should appear before the subcommand:
+
+```sh
+docker compose --env-file .env --profile dlp up -d \
+  dlp-redis dlp-vpn dlp-api dlp-orchestrator
+docker compose --env-file .env --profile dlp ps
+docker compose --env-file .env --profile dlp logs --tail=100 \
+  dlp-api dlp-orchestrator dlp-vpn
+```
+
+Starting the profile does not advertise DLP to browsers. First require every service to become healthy and run anonymous plus encrypted-cookie canaries on a non-public instance. Then change `DLP_ENABLED=true`, recreate only the gateway, and run the enable-phase check:
+
+```sh
+docker compose --env-file .env up -d --no-deps --force-recreate server
+python3 scripts/dlp-prod-preflight.py --env-file .env --phase enable
+```
+
+After an authenticated Web session reports DLP protocol 2, run one production anonymous YouTube smoke test. Roll back immediately by setting `DLP_ENABLED=false` and recreating `server`; this hides the capability without interrupting normal scrapers.
+
+## What to read next
+
+- [Deploy the API](/deployment/api/) covers hardened networking, certificates, DLP rollout, updates, and rollback.
+- [Deploy the Web app](/deployment/web/) covers immutable builds, revision metadata, reverse proxies, and verification.
+- [API environment reference](/self-hosting/api-environment/) lists every supported setting and current default.
+- [Operations](/self-hosting/operations/) covers health, logs, cache management, VPN recovery, and DLP cleanup.
+- [User troubleshooting](/start/troubleshooting/) maps visible failures to browser or operator actions.

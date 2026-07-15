@@ -9,9 +9,10 @@ The gateway matches URL text against the configured module patterns. Public, acc
 | --- | --- | --- |
 | TikTok | `tiktok.com`, `vm.tiktok.com`, `vt.tiktok.com` | Video, or an image slideshow/carousel with a separate audio file when available |
 | Instagram | `instagram.com`, `instagr.am` | Post/Reel video, image, or mixed carousel |
-| YouTube Shorts | `youtube.com/shorts`, including `www` and mobile hosts | Video; audio-only mode can extract its audio stream |
+| YouTube | `youtube.com`, its subdomains, and `youtu.be` | Official Web uses optional DLP for video/audio formats, subtitles, large downloads, and explicit cookie profiles |
+| YouTube Shorts | `youtube.com/shorts`, including `www` and mobile hosts | Machine `/scrape` uses the Shorts module; official Web routes the URL through YouTube DLP |
 | SoundCloud | `soundcloud.com`, `on.soundcloud.com` | MP3 audio, title/artist, duration, and cover when available |
-| YouTube Music | `music.youtube.com` | MP3 audio, title/artist, duration, and cover when available |
+| YouTube Music | `music.youtube.com` | Machine `/scrape` uses the music module; official Web locks Audio only and uses DLP output options |
 | Spotify | `open.spotify.com` | Audio metadata and downloaded MP3; requires configured Spotify API credentials on the instance |
 | Deezer | `deezer.com`, `deezer.page.link`, `link.deezer.com` | Audio metadata and downloaded MP3 |
 | Threads | `threads.net`, `threads.com` | Image, video, carousel, or text-only metadata |

@@ -29,7 +29,7 @@ docker compose -f docker-compose.dev.yml up -d --build
 
 ## Tests
 
-Coverage is currently module-specific. Instagram has the documented suite:
+Coverage is module-specific. Run a package's suite from that submodule so uv uses the correct lock and dependencies:
 
 ```sh
 cd pinchana-inst
@@ -38,6 +38,33 @@ PINCHANA_INST_LIVE=1 uv run pytest
 ```
 
 Threads also contains pytest tests. Live tests contact external platforms and must be explicitly enabled/provided with their documented target; ordinary validation should prefer unit tests, imports, and local `/health` requests.
+
+The gateway and DLP have focused suites:
+
+```sh
+cd pinchana-server
+uv run pytest -q
+
+cd ../pinchana-dlp
+uv run --with-requirements requirements-test.txt pytest -q
+```
+
+## Develop DLP components
+
+The `pinchana-dlp` submodule has its own standalone Compose stack for protocol and worker development. It is not the same deployment as the API root's production `dlp` profile.
+
+```sh
+cd pinchana-dlp
+cp example.env .env
+# Replace REDIS_PASSWORD, DLP_GATEWAY_TOKEN, WIREGUARD_PRIVATE_KEY,
+# and DLP_HOST_JOBS_DIR with real development values.
+docker compose --profile build build worker-image
+docker compose up --build -d redis dlp-api vpn orchestrator
+```
+
+`worker-image` is assigned to the `build` profile because it is an image-only helper, not a long-running service. The `--profile build` option is needed for its build command but must not be used as if it were the integrated production profile. `./start.sh` performs the same two commands after checking that `.env` exists.
+
+Use an absolute `DLP_HOST_JOBS_DIR`; the orchestrator passes that host path through Docker when it creates workers. The standalone stack calls the Redis secret `REDIS_PASSWORD`, while the integrated API stack calls it `DLP_REDIS_PASSWORD`.
 
 ## Add a scraper module
 

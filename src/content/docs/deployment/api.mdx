@@ -22,7 +22,7 @@ Ensure `/dev/net/tun` exists. Allocate disk capacity beyond `CACHE_MAX_SIZE_GB`,
 
 ## 2. Configure secrets
 
-At minimum, replace placeholders for the WireGuard private key, Gluetun API key, named machine API keys, Turnstile secret, expected Web hostname/action, and a random session secret of at least 32 characters. Add Spotify credentials if that module is enabled. If this origin will be selectable from the official Web app, install its issued public certificate envelope or mounted file.
+At minimum, replace placeholders for the WireGuard private key, Gluetun API key, named machine API keys, Turnstile secret, expected Web hostname/action, and a random session secret of at least 32 characters. Add Spotify credentials if that module is enabled. If this origin will be selectable from the official Web app, install its issued public certificate envelope or mounted file. The [self-hosting quickstart](/self-hosting/quickstart/) includes copy-safe generation commands and explains each credential boundary.
 
 ```ini
 WIREGUARD_PRIVATE_KEY=REPLACE_WITH_WIREGUARD_PRIVATE_KEY
@@ -46,12 +46,13 @@ Mount YouTube cookie files read-only through `SHORTS_COOKIES_DIR` only when requ
 Private downloads require the separate `dlp` Compose profile. Keep `DLP_ENABLED=false`, generate distinct gateway/owner/Redis secrets, create `/srv/pinchana-dlp/jobs` with mode `0711`, and pin the API, orchestrator, worker, and VPN images before starting it.
 
 ```sh
-docker compose --profile dlp pull dlp-redis dlp-vpn dlp-api dlp-orchestrator
-worker_image="$(docker compose --env-file .env --profile dlp config --format json | python3 -c 'import json, sys; print(json.load(sys.stdin)["services"]["dlp-orchestrator"]["environment"]["WORKER_IMAGE"])')"
-docker pull "$worker_image"
-python scripts/dlp-prod-preflight.py --env-file .env --phase infra
-docker compose --profile dlp up -d dlp-redis dlp-vpn dlp-api dlp-orchestrator
+python3 scripts/update-dlp-image-pins.py --env-file .env
+docker pull qmcgaw/gluetun:v3.40.0
+python3 scripts/dlp-prod-preflight.py --env-file .env --phase infra
+docker compose --env-file .env --profile dlp up -d dlp-redis dlp-vpn dlp-api dlp-orchestrator
 ```
+
+The image-pin helper pulls all three Pinchana DLP images, including the dynamically launched worker, and replaces their mutable tags with digests. The VPN image must also be present and must use a non-`latest` tag or digest. Keep `--profile dlp` before the Compose subcommand on `pull`, `up`, `ps`, and `logs`; ordinary `docker compose up -d` intentionally omits the optional services.
 
 Require every DLP service to become healthy and complete anonymous plus encrypted-cookie canaries on a non-public instance. Then set `DLP_ENABLED=true`, recreate only `server`, run the `enable` preflight phase, and confirm authenticated `/web/capabilities` reports protocol 2. Roll back by setting the flag false and recreating `server`; active jobs can finish or expire independently.
 
@@ -62,19 +63,19 @@ See [Private downloads (DLP)](/api/private-downloads-dlp/) and the repository's 
 Production scraper services and the gateway share Gluetun's network namespace. The supplied Compose file publishes API, scraper, and control mappings on Gluetun for local operability; **do not expose them all to the Internet**.
 
 - Publish the gateway only through your HTTPS reverse proxy.
-- Bind `API_HOST_PORT` to a locally reachable port and firewall it from external clients if the proxy is on-host.
+- Set `API_HOST_PORT=127.0.0.1:8080` when the proxy is on-host, and likewise bind the scraper/control mappings to loopback or firewall them.
 - Deny public access to Gluetun control 8000 and scraper ports 8081–8089.
 - Expose only TCP 443 publicly (and 80 only for redirect/ACME if needed).
-- Keep the Docker socket and SSH/administration paths tightly restricted.
+- Keep the Docker socket and SSH/administration paths tightly restricted. The supplied gateway mount exists for optional dynamic module lifecycle; remove it with an override if `CONTAINER_MODE` will always remain false.
 
 Configure Caddy, Nginx, Traefik, or another reverse proxy for `https://api.example.com` → the local gateway port. Preserve streaming and `Range` headers and choose timeouts longer than the gateway's 120-second scrape forwarding timeout.
 
 ## 4. Start and verify
 
 <Steps>
-1. Validate interpolation with `docker compose config` and inspect the output without sharing it—it contains secrets.
-2. Pull and start: `docker compose pull && docker compose up -d`.
-3. Inspect `docker compose ps` and `docker compose logs --tail=200 gluetun server`.
+1. Validate interpolation with `docker compose --env-file .env config --quiet`; inspect full rendered output only in a private terminal because it contains secrets.
+2. Pull and start: `docker compose --env-file .env pull && docker compose --env-file .env up -d`.
+3. Inspect `docker compose --env-file .env ps` and `docker compose --env-file .env logs --tail=200 gluetun server`.
 4. Check `curl --fail https://api.example.com/health`.
 5. If an instance certificate is configured, check `curl --fail https://api.example.com/web/identity` and confirm it returns `payload` and `signature`.
 6. Send an authenticated `/scrape`, then fetch its media URL with the same `X-API-Key` and a test `Range` header.

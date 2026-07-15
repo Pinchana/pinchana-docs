@@ -62,6 +62,7 @@ export default defineConfig({
 				{
 					label: 'Self-hosting & Contributing',
 					items: [
+						{ label: 'Self-hosting quickstart', slug: 'self-hosting/quickstart' },
 						{ label: 'API development', slug: 'self-hosting/api-development' },
 						{ label: 'API environment reference', slug: 'self-hosting/api-environment' },
 						{ label: 'Web development', slug: 'self-hosting/web-development' },

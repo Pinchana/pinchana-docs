@@ -9,6 +9,14 @@ Machine routes use named, independently revocable keys from `PINCHANA_API_KEYS`.
 PINCHANA_API_KEYS={"automation":"REPLACE_WITH_LONG_RANDOM_SECRET","ci":"REPLACE_WITH_ANOTHER_SECRET"}
 ```
 
+Generate a 256-bit hexadecimal value for each client and keep the resulting JSON on one dotenv line:
+
+```sh
+printf 'PINCHANA_API_KEYS={"bot":"%s"}\n' "$(openssl rand -hex 32)"
+```
+
+To add another independently revocable client, generate another value and add another JSON property. Do not copy the same secret under multiple names. Compose accepts the JSON shown above directly in `.env`; malformed JSON or an array/string instead of an object disables configured machine authentication.
+
 Send only the secret value:
 
 ```http
@@ -33,4 +41,4 @@ The gateway compares configured values using constant-time comparison and logs t
 | Invalid `PINCHANA_API_KEYS` JSON/shape | 503 | `API authentication is not configured` |
 | Empty configuration | 401 | No key can match; configure at least one key before machine use |
 
-Rotate a client by replacing only its value and redeploying/recreating the gateway. Never commit the JSON value, expose it as a `NEXT_PUBLIC_...` variable, place it in query parameters, or use it directly from untrusted browser JavaScript.
+Rotate a client by replacing only its value and recreating `server`. Remove the old value only after every intended client has switched. Never commit the JSON value, expose it as a `NEXT_PUBLIC_...` variable, place it in query parameters, print rendered Compose configuration into public logs, or use it directly from untrusted browser JavaScript.

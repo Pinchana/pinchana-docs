@@ -5,7 +5,7 @@ description: Run the server-backed Next.js application with Docker Compose and a
 
 import { Steps, Aside } from '@astrojs/starlight/components';
 
-Pinchana Web is hosted with the repository's `docker-compose.yml`. It uses the official `oven/bun:1.3.14-debian` image directly—there is no Pinchana Web image to build or publish. On container start, Bun installs the frozen lockfile, synchronizes browser FFmpeg assets, builds Next.js, and starts the production server.
+Pinchana Web is hosted with the repository's `docker-compose.yml`. Compose uses the multi-stage `Dockerfile` to install production dependencies, synchronize the local FFmpeg WebAssembly assets, compile Next.js, and create a non-root runtime image. The default local tag is `pinchana-web:latest`; override it with `PINCHANA_WEB_IMAGE` when the host needs a different tag.
 
 Pinchana Web requires a running server. It cannot be exported as static HTML because route handlers proxy authenticated requests, verify Ed25519 certificates, read server-only configuration, and manage HttpOnly cookies.
 
@@ -14,8 +14,10 @@ Pinchana Web requires a running server. It cannot be exported as static HTML bec
 | Variable | Phase | Exposure |
 | --- | --- | --- |
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | container build/public | Embedded for the browser; required and registered for the production Web hostname |
+| `NEXT_PUBLIC_PINCHANA_WEB_COMMIT` | container build/public | Optional full Web Git revision shown and linked from Settings; defaults to `development` when no valid SHA is supplied |
 | `PINCHANA_API_URL` | container runtime/server | Default API origin; required and never public |
 | `PINCHANA_INSTANCE_PUBLIC_KEY` | container runtime/server | Optional Ed25519 public verification PEM; preserve newlines or use escaped `\n` |
+| `PINCHANA_WEB_IMAGE` | Compose build | Local image tag, default `pinchana-web:latest` |
 | `WEB_BIND_ADDRESS` | Compose host | Host interface, default `127.0.0.1` |
 | `WEB_HOST_PORT` | Compose host | Reverse-proxy target port, default `3000` |
 
@@ -25,21 +27,30 @@ Configure the selected API separately with the matching Turnstile secret, expect
 
 <Steps>
 1. Clone [Pinchana Web](https://github.com/Pinchana/pinchana-web) on the Docker host.
-2. Create a mode-0600 `.env` beside `docker-compose.yml` with the required variables. Compose reads this file for interpolation; it is not mounted into the container.
+2. Create a mode-0600 `.env` beside `docker-compose.yml` with the required variables. Compose reads it for interpolation; it is not copied into the image.
 3. Run `docker compose config` and inspect the effective configuration without sharing it because it contains deployment values.
-4. Start with `docker compose up -d` and follow the initial install/build with `docker compose logs -f web`.
+4. Build with the exact revision, then start the immutable image.
 5. Wait for `docker compose ps` to report the service healthy, then proxy HTTPS to `127.0.0.1:3000`.
 </Steps>
 
 ```ini
 PINCHANA_API_URL=https://api.pinchana.cc
 NEXT_PUBLIC_TURNSTILE_SITE_KEY=REPLACE_WITH_PUBLIC_SITE_KEY
+NEXT_PUBLIC_PINCHANA_WEB_COMMIT=REPLACE_WITH_FULL_WEB_GIT_COMMIT
 PINCHANA_INSTANCE_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----\nREPLACE_WITH_PUBLIC_KEY\n-----END PUBLIC KEY-----"
 WEB_BIND_ADDRESS=127.0.0.1
 WEB_HOST_PORT=3000
 ```
 
-Application source and configuration are mounted read-only into a writable `/app` workspace. The container copies `public/` into that workspace before install so the FFmpeg synchronization step can write `public/ffmpeg`. Named volumes hold installed dependencies and `.next-build`; recreate these disposable volumes if a corrupt dependency/build cache survives an update.
+The Docker build context excludes `.git`, so it cannot discover a revision by itself. Compose also cannot execute `git rev-parse` inside `.env`. Paste the full commit into `.env`, or inject it for the build:
+
+```sh
+NEXT_PUBLIC_PINCHANA_WEB_COMMIT="$(git rev-parse HEAD)" docker compose build web
+docker compose up -d web
+docker compose logs --tail=100 web
+```
+
+The Dockerfile removes any stale `next-env.d.ts` path before `next build`, avoiding a host-created directory from breaking TypeScript generation. The final image contains the compiled application, production dependencies, public assets, and local FFmpeg worker/core; it does not bind-mount the source tree or install packages during container startup.
 
 ## Reverse proxy and updates
 
@@ -47,17 +58,18 @@ Put Caddy, Nginx, Traefik, or another HTTPS reverse proxy in front of the loopba
 
 ```sh
 git pull --ff-only
-docker compose up -d --force-recreate web
+NEXT_PUBLIC_PINCHANA_WEB_COMMIT="$(git rev-parse HEAD)" docker compose up -d --build web
 docker compose logs --tail=100 web
 ```
 
-The startup command rebuilds from the checked-out revision. `NEXT_PUBLIC_TURNSTILE_SITE_KEY` is frozen into that build, so changing it also requires recreation. Roll back by checking out the previous revision and force-recreating the service again.
+The site key and revision are frozen into the build, so changing either requires rebuilding. Roll back by checking out the previous revision and rebuilding that image. Preserve the `.env`; there are no application data volumes.
 
 ## Verification checklist
 
 - Page load checks an existing session or renders Turnstile.
 - Browser network requests never reveal the API origin, signed session, or instance certificate cookie.
-- URL processing, image/video/audio preview, byte-range seeking, Media and Audio-only saves, ZIP creation, and FFmpeg loading work.
+- URL processing, custom image/video/audio preview, byte-range seeking, Media and Audio-only saves, ZIP creation, and FFmpeg loading work.
+- A YouTube job replaces the URL bar with progress, completes through the browser download manager, and supports pause/resume behavior provided by the browser and server range requests.
 - Cookies are `HttpOnly`, `SameSite=Strict`, and `Secure` over production HTTPS.
 - Custom origin selection accepts an authorized certificate and rejects mismatched/expired envelopes.
 

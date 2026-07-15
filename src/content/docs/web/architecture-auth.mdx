@@ -13,8 +13,10 @@ Browser                       Next.js BFF                         API
   │ Turnstile token              │
   ├─ POST /api/verify ───────────┼────────────────────────────────→ /web/verify
   │                Set-Cookie: pinchana_web_session (HttpOnly)
+  ├─ GET /api/build ─────────────┼────────────────────────────────→ /web/build
   ├─ POST /api/scrape ───────────┼─ Bearer + JSON ────────────────→ /web/scrape
-  └─ GET /api/media/... ─────────┼─ Bearer + Range ───────────────→ /web/media/...
+  ├─ GET /api/media/... ─────────┼─ Bearer + Range ───────────────→ /web/media/...
+  └─ /api/dlp/jobs/... ──────────┼─ Bearer + job data/ranges ─────→ /web/dlp/jobs/...
 ```
 
 ## Page-load gate
@@ -32,6 +34,8 @@ The API URL is `PINCHANA_API_URL`, a server-only variable. There is no machine k
 ## Same-origin proxying
 
 `POST /api/scrape` validates a browser-supplied HTTP(S) URL, forwards to `/web/scrape` with the signed bearer token, and recursively rewrites `/web/media/...` paths to `/api/media/...`. The media route rejects empty/dot path segments, URL-encodes each segment, forwards range requests, streams the response, and marks it private/no-store.
+
+`GET /api/build` fetches the API's public build manifest without forwarding deployment configuration and sanitizes it before About displays it. DLP proxy routes keep the same browser-session boundary, forward cookie ciphertext without decrypting it, and stream completed files with range metadata rather than buffering them.
 
 <Aside type="caution">
 Do not convert `PINCHANA_API_URL`, `PINCHANA_INSTANCE_PUBLIC_KEY`, API keys, Turnstile secrets, or browser session values into `NEXT_PUBLIC_...` variables. Only `NEXT_PUBLIC_TURNSTILE_SITE_KEY` is designed for browser delivery.

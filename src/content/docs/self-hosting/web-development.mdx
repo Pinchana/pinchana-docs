@@ -22,11 +22,12 @@ The API must be running at `PINCHANA_API_URL`. For local verification, use Cloud
 ## Validation
 
 ```sh
+bun run test
 bun run lint
 bunx tsc --noEmit
 bun run build
 ```
 
-There is no separate test script in the current package. Exercise the verification gate, URL submission, media range playback, both download modes, ZIP on/off, session expiry, and custom instance selection in a browser for changes that affect those paths.
+The Bun suite covers focused filename, DLP download, and diagnostic behavior. Exercise the verification gate, URL submission, media range playback, both download modes, ZIP on/off, session expiry, and custom instance selection manually for changes that affect those paths. The project does not require Playwright.
 
 See [Web development and configuration](/web/development/) for environment variables and the project map, and [Browser media pipeline](/web/media-pipeline/) for FFmpeg behavior.
