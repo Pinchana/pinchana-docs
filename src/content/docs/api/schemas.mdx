@@ -1,101 +1,177 @@
 ---
-title: Schemas and examples
-description: Unified Pinchana request and response fields with representative payloads.
+title: API v1 schemas and examples
+description: Normalized Pinchana API v1 request, success, media, metadata, and error contracts.
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 
-## ScrapeRequest
+## Scrape request
 
 | Field | Type | Required | Meaning |
 | --- | --- | ---: | --- |
-| `url` | validated HTTP URL | yes | Complete target URL. Pydantic rejects malformed/non-HTTP URL input with `422`. |
+| `url` | HTTP(S) URL | yes | Complete supported source URL. Validation failures return `422`. |
 
 ```json
 {"url":"https://www.instagram.com/p/SHORTCODE/"}
 ```
 
-## ScrapeResponse
+## Success envelope
 
-| Field | Type | Required | Meaning |
-| --- | --- | ---: | --- |
-| `shortcode` | string | yes | Platform post, video, track, or cache identifier |
-| `caption` | string | yes | Caption or title fallback |
-| `author` | string | yes | Handle, channel, or artist |
-| `media_type` | string | yes | Common values include `video`, `image`, `audio`, and `text` |
-| `thumbnail_url` | string | yes | Relative cached preview/image path; may be empty when unavailable |
-| `video_url`, `audio_url`, `cover_url` | string or null | no | Relative cached media paths |
-| `duration` | integer or null | no | Duration in seconds when provided |
-| `title`, `album` | string or null | no | Music metadata when provided |
-| `carousel` | `MediaItem[]` or null | no | Ordered multi-item visual media |
-| `tracklist` | `TrackItem[]` or null | no | Ordered album/playlist tracks |
+API v1 returns `data` plus version metadata:
 
-## Nested items
+```json
+{
+  "data": {
+    "id": "SHORTCODE",
+    "source": {
+      "platform": "instagram",
+      "url": "https://www.instagram.com/p/SHORTCODE/",
+      "application": null
+    },
+    "content": {
+      "title": null,
+      "text": "Example post",
+      "html": null,
+      "published_at": "2026-07-15T11:56:00Z"
+    },
+    "author": {"name": "Creator", "username": "creator"},
+    "media": [],
+    "music": null,
+    "engagement": null,
+    "safety": null,
+    "link": null
+  },
+  "meta": {"api_version": "1"}
+}
+```
 
-`MediaItem` always has `index`, `media_type`, and `thumbnail_url`; `video_url` is nullable. `TrackItem` always has `index`, `title`, `artist`, and `audio_url`.
+| Object | Fields | Notes |
+| --- | --- | --- |
+| `source` | `platform`, `url`, `application` | `platform` is one of the configured module identifiers. `application` identifies a source application when supplied. |
+| `content` | `title`, `text`, `html`, `published_at` | Every value is nullable. Timestamps use an ISO 8601 representation. |
+| `author` | `name`, `username` | Both values are nullable because upstream platforms expose different identity fields. |
+| `music` | `album` | Present only when album metadata exists outside individual media assets. |
+| `engagement` | `likes`, `replies`, `reposts`, `quotes`, `views` | Counts are nullable and non-negative. Absence does not mean zero. |
+| `safety` | `spoiler`, `text_spoiler`, `nsfw` | Boolean display and content-safety signals. |
+| `link` | `url` | Optional extracted external link. |
+
+## Media assets
+
+All downloadable or previewable files appear in one ordered `media` array.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `index` | non-negative integer | Stable order within this response |
+| `type` | `image`, `video`, or `audio` | Media transport type |
+| `role` | `content`, `soundtrack`, or `cover` | Semantic purpose of the file |
+| `url` | string | Authenticated relative media path |
+| `preview_url` | string or null | Preview or thumbnail path, usually for video |
+| `dimensions` | object or null | Positive `width` and `height` measured from cached visual media |
+| `duration_seconds` | integer or null | Non-negative duration when known |
+| `title`, `artist` | string or null | Asset-level music metadata |
+| `looping` | boolean | Indicates video intended to repeat, such as Twitter/X GIF-style media |
 
 <Tabs>
 <TabItem label="Video">
 
 ```json
 {
-  "shortcode": "SHORTCODE", "caption": "Example reel", "author": "creator",
-  "media_type": "video", "thumbnail_url": "/media/instagram/SHORTCODE/thumbnail.jpg",
-  "video_url": "/media/instagram/SHORTCODE/video.mp4", "audio_url": null,
-  "cover_url": null, "duration": null, "title": null, "album": null,
-  "carousel": null, "tracklist": null
+  "index": 0,
+  "type": "video",
+  "role": "content",
+  "url": "/media/instagram/SHORTCODE/video.mp4",
+  "preview_url": "/media/instagram/SHORTCODE/thumbnail.jpg",
+  "dimensions": {"width": 1080, "height": 1920},
+  "duration_seconds": 18,
+  "title": null,
+  "artist": null,
+  "looping": false
 }
 ```
 
 </TabItem>
-<TabItem label="Carousel">
+<TabItem label="Looping clip">
 
 ```json
 {
-  "shortcode": "POST123", "caption": "A mixed post", "author": "creator",
-  "media_type": "image", "thumbnail_url": "/media/instagram/POST123/thumbnail.jpg",
-  "video_url": null, "audio_url": null, "cover_url": null, "duration": null,
-  "title": null, "album": null,
-  "carousel": [
-    {"index":0,"media_type":"image","thumbnail_url":"/media/instagram/POST123/carousel/0_thumbnail.jpg","video_url":null},
-    {"index":1,"media_type":"video","thumbnail_url":"/media/instagram/POST123/carousel/1_thumbnail.jpg","video_url":"/media/instagram/POST123/carousel/1_video.mp4"}
-  ],
-  "tracklist": null
+  "index": 0,
+  "type": "video",
+  "role": "content",
+  "url": "/media/twitter/1900000000000000000/video_0.mp4",
+  "preview_url": "/media/twitter/1900000000000000000/thumbnail_0.jpg",
+  "dimensions": {"width": 640, "height": 640},
+  "duration_seconds": 4,
+  "title": null,
+  "artist": null,
+  "looping": true
 }
 ```
 
 </TabItem>
-<TabItem label="Slideshow">
+<TabItem label="Carousel and soundtrack">
 
 ```json
-{
-  "shortcode": "7460000000000000000", "caption": "Photo mode", "author": "creator",
-  "media_type": "image", "thumbnail_url": "/media/tiktok/7460000000000000000/thumbnail.jpg",
-  "video_url": null, "audio_url": "/media/tiktok/7460000000000000000/audio.mp3",
-  "cover_url": null, "duration": null, "title": null, "album": null,
-  "carousel": [
-    {"index":0,"media_type":"image","thumbnail_url":"/media/tiktok/7460000000000000000/carousel/0_thumbnail.jpg","video_url":null}
-  ],
-  "tracklist": null
-}
+[
+  {
+    "index": 0, "type": "image", "role": "content",
+    "url": "/media/tiktok/7460000000000000000/image_0.jpg",
+    "preview_url": null, "dimensions": {"width": 1080, "height": 1920},
+    "duration_seconds": null, "title": null, "artist": null, "looping": false
+  },
+  {
+    "index": 1, "type": "audio", "role": "soundtrack",
+    "url": "/media/tiktok/7460000000000000000/audio.mp3",
+    "preview_url": null, "dimensions": null,
+    "duration_seconds": 23, "title": null, "artist": null, "looping": false
+  }
+]
 ```
 
 </TabItem>
-<TabItem label="Track list">
+<TabItem label="Threads music preview">
 
 ```json
-{
-  "shortcode": "ALBUM123", "caption": "Example album", "author": "Artist",
-  "media_type": "audio", "thumbnail_url": "/media/example/ALBUM123/cover.jpg",
-  "video_url": null, "audio_url": null, "cover_url": "/media/example/ALBUM123/cover.jpg",
-  "duration": null, "title": "Example album", "album": "Example album", "carousel": null,
-  "tracklist": [
-    {"index":0,"title":"First track","artist":"Artist","audio_url":"/media/example/ALBUM123/track-0.mp3"}
-  ]
-}
+[
+  {
+    "index": 0, "type": "image", "role": "content",
+    "url": "/media/threads/POST_ID/media_0.webp",
+    "preview_url": null, "dimensions": {"width": 1080, "height": 1350},
+    "duration_seconds": null, "title": null, "artist": null, "looping": false
+  },
+  {
+    "index": 1, "type": "audio", "role": "soundtrack",
+    "url": "/media/threads/POST_ID/music_preview.m4a",
+    "preview_url": null, "dimensions": null,
+    "duration_seconds": 30, "title": "Track title", "artist": "Artist", "looping": false
+  }
+]
 ```
 
 </TabItem>
 </Tabs>
 
-Examples are representative and contain placeholders. Consumers should tolerate nullable optional fields and additional fields from a directly mounted module, but the gateway contract is the base schema above.
+Text-only posts are valid and return an empty `media` array. Clients must not treat an empty array as a schema failure.
+
+## Error envelope
+
+API v1 uses one error shape for HTTP, validation, routing, and upstream failures:
+
+```json
+{
+  "error": {
+    "code": "authentication_required",
+    "message": "This media requires authentication",
+    "details": null
+  }
+}
+```
+
+`details` may contain structured validation information. Clients should branch on `code`, display a controlled local message, and treat the server message as diagnostic text.
+
+## Legacy compatibility
+
+The unversioned `/scrape` and `/web/scrape` routes return the earlier flat `ScrapeResponse` with fields such as `shortcode`, `media_type`, `thumbnail_url`, `video_url`, `carousel`, and `tracklist`.
+
+<Aside type="note">
+Legacy routes remain supported for existing clients. New integrations must use API v1. The normalized contract prevents platform-specific fields from becoming client dependencies.
+</Aside>

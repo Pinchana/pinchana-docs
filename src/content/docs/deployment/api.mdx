@@ -12,7 +12,7 @@ The canonical production deployment is a Linux VPS running Docker Engine and the
 Create DNS for `api.example.com`, install current Docker Engine with the Compose plugin, clone recursively, and copy the example configuration:
 
 ```sh
-git clone --recursive https://github.com/Pinchana/pinchana-api.git
+git clone --recurse-submodules https://github.com/Pinchana/pinchana-api.git
 cd pinchana-api
 cp .env.example .env
 chmod 600 .env
@@ -46,13 +46,15 @@ Mount YouTube cookie files read-only through `SHORTS_COOKIES_DIR` only when requ
 Private downloads require the separate `dlp` Compose profile. Keep `DLP_ENABLED=false`, generate distinct gateway/owner/Redis secrets, create `/srv/pinchana-dlp/jobs` with mode `0711`, and pin the API, orchestrator, worker, and VPN images before starting it.
 
 ```sh
+python3 scripts/update-dlp-image-pins.py --env-file .env --dry-run
 python3 scripts/update-dlp-image-pins.py --env-file .env
 docker pull qmcgaw/gluetun:v3.40.0
 python3 scripts/dlp-prod-preflight.py --env-file .env --phase infra
-docker compose --env-file .env --profile dlp up -d dlp-redis dlp-vpn dlp-api dlp-orchestrator
+docker compose --env-file .env --profile dlp up --detach \
+  dlp-redis dlp-vpn dlp-api dlp-orchestrator
 ```
 
-The image-pin helper pulls all three Pinchana DLP images, including the dynamically launched worker, and replaces their mutable tags with digests. The VPN image must also be present and must use a non-`latest` tag or digest. Keep `--profile dlp` before the Compose subcommand on `pull`, `up`, `ps`, and `logs`; ordinary `docker compose up -d` intentionally omits the optional services.
+The image-pin helper pulls all three Pinchana DLP images, including the dynamically launched worker, and replaces their mutable tags with digests. The VPN image must also be present and must use a non-`latest` tag or digest. Keep `--profile dlp` before the Compose subcommand on `pull`, `up`, `ps`, and `logs`; a start without that profile intentionally omits the optional services.
 
 Require every DLP service to become healthy and complete anonymous plus encrypted-cookie canaries on a non-public instance. Then set `DLP_ENABLED=true`, recreate only `server`, run the `enable` preflight phase, and confirm authenticated `/web/capabilities` reports protocol 2. Roll back by setting the flag false and recreating `server`; active jobs can finish or expire independently.
 
@@ -74,11 +76,11 @@ Configure Caddy, Nginx, Traefik, or another reverse proxy for `https://api.examp
 
 <Steps>
 1. Validate interpolation with `docker compose --env-file .env config --quiet`; inspect full rendered output only in a private terminal because it contains secrets.
-2. Pull and start: `docker compose --env-file .env pull && docker compose --env-file .env up -d`.
-3. Inspect `docker compose --env-file .env ps` and `docker compose --env-file .env logs --tail=200 gluetun server`.
-4. Check `curl --fail https://api.example.com/health`.
-5. If an instance certificate is configured, check `curl --fail https://api.example.com/web/identity` and confirm it returns `payload` and `signature`.
-6. Send an authenticated `/scrape`, then fetch its media URL with the same `X-API-Key` and a test `Range` header.
+2. Pull and start: `docker compose --env-file .env pull && docker compose --env-file .env up --detach`.
+3. Inspect `docker compose --env-file .env ps` and `docker compose --env-file .env logs --tail=100 gluetun server`.
+4. Check `curl --fail-with-body --silent --show-error https://api.example.com/health`.
+5. If an instance certificate is configured, check `curl --fail-with-body --silent --show-error https://api.example.com/web/identity` and confirm that the response contains `payload` and `signature`.
+6. Send an authenticated request to `/v1/scrape`, then fetch its media URL with the same `X-API-Key` and a test `Range` header.
 7. From the Web hostname, complete Turnstile and confirm `/web/verify`, scrape, and media playback through the Web BFF.
 </Steps>
 
@@ -87,13 +89,13 @@ Configure Caddy, Nginx, Traefik, or another reverse proxy for `https://api.examp
 Pin explicit GHCR release tags for repeatability, then:
 
 ```sh
-docker compose pull
-docker compose up -d
-docker compose ps
-curl --fail https://api.example.com/health
+docker compose --env-file .env pull
+docker compose --env-file .env up --detach
+docker compose --env-file .env ps
+curl --fail-with-body --silent --show-error https://api.example.com/health
 ```
 
-Roll back by restoring previous tags and running `docker compose up -d`. Preserve `scraper-cache`. Never use `docker restart gluetun`; use `docker compose up -d --force-recreate gluetun`, recreate affected dependent services if necessary, and verify health.
+Roll back by restoring previous tags and running `docker compose --env-file .env up --detach`. Preserve `scraper-cache`. Never use `docker restart gluetun`; use `docker compose --env-file .env up --detach --force-recreate gluetun`, recreate affected dependent services if necessary, and verify health.
 
 <Aside type="caution">
 The public `/health` response includes module details. Administrator routes reveal more operational data and accept powerful actions; their API-key protection does not replace network restrictions and key rotation.

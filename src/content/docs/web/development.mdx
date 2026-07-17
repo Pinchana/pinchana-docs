@@ -7,7 +7,7 @@ import { Aside } from '@astrojs/starlight/components';
 
 ## Requirements and commands
 
-Use Bun and a current Node-compatible runtime supported by Next.js 16:
+Use Bun 1.3.14 or the version recorded by `packageManager`. Next.js runs through Bun; a separate global Node.js installation is not required for the documented commands.
 
 ```sh
 git clone https://github.com/Pinchana/pinchana-web.git
@@ -43,15 +43,18 @@ The API separately needs the matching Turnstile private secret, expected Web hos
 
 | Path | Responsibility |
 | --- | --- |
-| `app/page.tsx` | Gate, URL form, results, settings, downloads, and notifications |
+| `app/Home.tsx` | Gate, URL form, results, settings, downloads, and notifications |
 | `app/api/*` | Instance, verify, session, scrape, capabilities, DLP, and media BFF routes |
 | `lib/pinchana.ts` | Cookies, origin selection, certificate verification, error mapping, URL rewriting |
 | `app/lib/audio-converter.ts` | Local FFmpeg load and MP3 conversion |
 | `scripts/sync-ffmpeg-core.mjs` | Copies static core and worker assets |
+| `messages/app`, `messages/legal`, `i18n` | Paired source/translation catalogs, locale selection, and legal approval gates |
 | `app/policy`, `app/usage` | Legal/privacy pages |
 
 <Aside type="caution">
 Static export is unsupported. Route handlers, server-only variables, cryptographic verification, streaming proxies, and HttpOnly cookies require a running Next.js server.
 </Aside>
 
-Common local failures are a missing API URL, mismatched site/secret Turnstile pair, hostname/action mismatch, a session secret shorter than 32 characters, unavailable API CORS identity response, missing synchronized FFmpeg assets, or DLP controls hidden because the API capability is disabled/unhealthy.
+Common local failures are a missing API URL, mismatched site/secret Turnstile pair, hostname/action mismatch, a session secret shorter than 32 characters, unavailable API identity response, missing synchronized FFmpeg assets, or DLP controls hidden because the API capability is disabled or unhealthy.
+
+Local success with Cloudflare test keys does not validate production challenge behavior. In production, first determine whether the browser sends `POST /api/verify`. If it does not, investigate the widget and browser environment before changing session code. Error `600010`, Private Access Token failures, extension `content.js` policy messages, or WebGL context loss are browser or challenge signals rather than evidence of a Pinchana session failure.

@@ -22,9 +22,9 @@ hero:
 import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
 import FontAwesomeIcon from '../../components/FontAwesomeIcon.astro';
 
-## One project, four paths
+## One project, six entry points
 
-Pinchana is in **Preview**. Start with the browser interface, then go deeper only when you need to integrate, operate, or contribute.
+Pinchana is in **Preview**. Select the entry point that corresponds to the task. The browser interface is intended for users. The API, DLP, development, and deployment sections are intended for integrators and operators.
 
 <CardGrid stagger>
 	<Card title="Download media">
@@ -47,6 +47,16 @@ Pinchana is in **Preview**. Start with the browser interface, then go deeper onl
 		Deploy the Docker Compose API, a server-backed Web app, and these static docs.
 		<LinkCard title="Self-hosting" href="/self-hosting/quickstart/" />
 	</Card>
+	<Card title="Operate private downloads">
+		<FontAwesomeIcon name="server" />
+		Review the DLP protocol, trust boundaries, image pinning, canaries, and rollback procedure.
+		<LinkCard title="DLP operations" href="/dlp/operations/" />
+	</Card>
+	<Card title="Translate the interface">
+		<FontAwesomeIcon name="code" />
+		Edit formal JSON catalogs and submit the result through a GitHub pull request.
+		<LinkCard title="Translation guide" href="/translating/" />
+	</Card>
 </CardGrid>
 
 ## Official services
@@ -56,4 +66,4 @@ Pinchana is in **Preview**. Start with the browser interface, then go deeper onl
 - Documentation: [docs.pinchana.cc](https://docs.pinchana.cc)
 - Pinchana BOT: [t.me/pinchanabot](https://t.me/pinchanabot)
 
-Source is maintained in the [Pinchana API](https://github.com/Pinchana/pinchana-api) and [Pinchana Web](https://github.com/Pinchana/pinchana-web) repositories.
+Source is maintained in the [API](https://github.com/Pinchana/pinchana-api), [Web](https://github.com/Pinchana/pinchana-web), [DLP](https://github.com/Pinchana/pinchana-dlp), and [Docs](https://github.com/Pinchana/pinchana-docs) repositories.

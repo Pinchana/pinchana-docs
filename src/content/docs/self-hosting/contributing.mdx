@@ -10,7 +10,18 @@ Contributions belong in the repository that owns the behavior:
 - [Pinchana Web](https://github.com/Pinchana/pinchana-web) for the browser interface, BFF routes, FFmpeg pipeline, and legal pages.
 - [Pinchana Docs](https://github.com/Pinchana/pinchana-docs) for this Starlight site. Documentation must follow shipped behavior in the owning repository.
 
-Clone API submodules recursively. Make package code changes inside the relevant submodule, commit and push that submodule first, then update the root repository's submodule pointer.
+Interface and legal translations use JSON pull requests in Pinchana Web. Follow the dedicated [translation guide](/translating/) instead of introducing a translation service or editing generated runtime messages.
+
+Clone API submodules recursively. Before editing or publishing a submodule, confirm its current branch and parent pointer:
+
+```sh
+cd pinchana-api
+git status --short --branch
+git submodule status
+git submodule foreach 'git status --short --branch'
+```
+
+For a published submodule change, commit and push the submodule on `main` first. Then return to the API root, verify the recorded commit, commit the updated pointer, and publish the parent repository. Do not leave the parent pointing to an unpublished or feature-branch-only commit.
 
 ## Expectations
 
@@ -21,6 +32,6 @@ Clone API submodules recursively. Make package code changes inside the relevant 
 - Update `.env.example`, Compose, module config, workflow mapping, and documentation together when adding configuration or a service.
 - Use short imperative or conventional commit subjects such as `fix: ...` and `feat: ...`.
 
-API verification is module-specific: run available pytest suites, import checks, local health, and root-context Docker builds. DLP changes should run its protocol/security tests and validate both the standalone build profile and integrated API profile. Web changes should pass `bun run test`, `bun run lint`, `bunx tsc --noEmit`, and `bun run build`, followed by focused manual browser testing when relevant; Playwright is not required. Documentation changes should pass `bun run check` and `bun run build` in `pinchana-docs`.
+API verification is module-specific: run available pytest suites, import checks, local health, and root-context Docker builds. DLP changes should run protocol/security tests and validate both the standalone build profile and integrated API profile. Web changes should pass `bun run test`, `bun run lint`, `bunx tsc --noEmit`, and `bun run build`, followed by focused manual browser testing when relevant; Playwright is not required. Documentation changes should pass `bun run check` and `bun run build` in `pinchana-docs`.
 
 Pull requests should identify affected services, runtime/config changes, security implications, and exact verification commands. Do not introduce behavior in docs that the current API or Web source does not implement.

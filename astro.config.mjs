@@ -37,19 +37,6 @@ export default defineConfig({
 					],
 				},
 				{
-					label: 'API',
-					items: [
-						{ label: 'Quickstart', slug: 'api/quickstart' },
-						{ label: 'Authentication', slug: 'api/authentication' },
-						{ label: 'Endpoint reference', slug: 'api/endpoints' },
-						{ label: 'Browser flow', slug: 'api/browser-flow' },
-						{ label: 'Private downloads (DLP)', slug: 'api/private-downloads-dlp' },
-						{ label: 'Schemas & examples', slug: 'api/schemas' },
-						{ label: 'Errors & media lifecycle', slug: 'api/errors-media' },
-						{ label: 'Architecture & modules', slug: 'api/architecture' },
-					],
-				},
-				{
 					label: 'Web',
 					items: [
 						{ label: 'Architecture & authentication', slug: 'web/architecture-auth' },
@@ -60,7 +47,32 @@ export default defineConfig({
 					],
 				},
 				{
-					label: 'Self-hosting & Contributing',
+					label: 'API',
+					items: [
+						{ label: 'Quickstart', slug: 'api/quickstart' },
+						{ label: 'Authentication', slug: 'api/authentication' },
+						{ label: 'Endpoint reference', slug: 'api/endpoints' },
+						{ label: 'Browser flow', slug: 'api/browser-flow' },
+						{ label: 'Schemas & examples', slug: 'api/schemas' },
+						{ label: 'Errors & media lifecycle', slug: 'api/errors-media' },
+						{ label: 'Architecture & modules', slug: 'api/architecture' },
+					],
+				},
+				{
+					label: 'DLP',
+					items: [
+						{ label: 'Protocol & private downloads', slug: 'api/private-downloads-dlp' },
+						{ label: 'Operations & security', slug: 'dlp/operations' },
+					],
+				},
+				{
+					label: 'Translating',
+					items: [
+						{ label: 'Translation guide', slug: 'translating' },
+					],
+				},
+				{
+					label: 'Development & Operations',
 					items: [
 						{ label: 'Self-hosting quickstart', slug: 'self-hosting/quickstart' },
 						{ label: 'API development', slug: 'self-hosting/api-development' },

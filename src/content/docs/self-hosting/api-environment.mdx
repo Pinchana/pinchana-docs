@@ -48,7 +48,7 @@ The DLP profile is optional and defaults off. Its three secrets must be distinct
 | `DLP_EXECUTION_TIMEOUT_SECONDS` | `2700` | Worker download execution limit; orchestrator cleanup allows an additional short grace period |
 | `DLP_MAX_OUTPUT_BYTES` | `8589934592` | Maximum completed output size; temporary merge workspace is twice this limit plus 512 MiB |
 
-The Compose `dlp` profile also starts internal Redis and a dedicated VPN. Redis uses RAM-backed storage; completed media remains only until job expiry. Put the global option before the command: `docker compose --profile dlp up ...`. A plain `docker compose up -d` does not start profiled services. Run `scripts/dlp-prod-preflight.py` from `pinchana-api` before both infrastructure and enable phases. See [Private downloads (DLP)](/api/private-downloads-dlp/) for the API contract.
+The Compose `dlp` profile also starts internal Redis and a dedicated VPN. Redis uses RAM-backed storage; completed media remains only until job expiry. Put the global option before the command: `docker compose --env-file .env --profile dlp up --detach ...`. A start without the profile does not create those services. Run `scripts/dlp-prod-preflight.py` from `pinchana-api` before both infrastructure and enable phases. See [Private downloads (DLP)](/api/private-downloads-dlp/) for the API contract.
 
 ## Gateway, cache, and VPN
 

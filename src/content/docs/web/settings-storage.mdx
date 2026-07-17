@@ -14,6 +14,7 @@ The `pinchana-settings` local-storage object is updated when preferences change:
   "filenameStyle": "pretty",
   "pawsEnabled": true,
   "reduceMotion": false,
+  "convertTwitterGifs": true,
   "downloadMode": "media",
   "dlpQuality": "best",
   "dlpCodec": "auto",
@@ -33,6 +34,7 @@ The `pinchana-settings` local-storage object is updated when preferences change:
 | Filename style | Pretty | Chooses Classic, Basic, Pretty, or Nerdy branded filenames; every style keeps `[pinchana.cc]` |
 | Background paws | on | Shows the decorative floating pattern |
 | Reduce motion | off | Disables interface animations/transitions |
+| Convert Twitter GIFs | on | Converts looping Twitter/X video assets to GIF when saving; disabling it keeps the source video |
 | Download mode | Media | Remembers Media or Audio only |
 | YouTube video options | Best / Auto / Auto | Preferred quality, codec, and container |
 | YouTube audio format | MP3 | Best source, MP3, OGG, WAV, or Opus |
@@ -53,11 +55,18 @@ The custom API origin is deliberately **not** kept in local storage. Its signed 
 | `pinchana_cookie_consent` | local storage | Hides the informational cookie banner after acceptance |
 | `pinchana_web_session` | HttpOnly, SameSite=Strict cookie | Signed API browser-session token |
 | `pinchana_instance` | HttpOnly, SameSite=Strict cookie | Project-signed certificate for the selected custom API |
+| `pinchana_locale` | HttpOnly, SameSite=Lax cookie | Selected interface language, retained for one year |
 | `cf_clearance` (conditional) | Cloudflare cookie | May exist only if Turnstile pre-clearance or a Cloudflare Challenge is enabled |
 
 Session and instance cookies use `Secure` in production and path `/`. The instance cookie's `Max-Age` is the remaining certificate lifetime. Selecting or restoring an instance deletes the current session cookie; restoring default also deletes the instance cookie.
 
-Pinchana Web states that it uses no analytics, advertising, tracking, or marketing cookies. Font Awesome is bundled locally. Space Grotesk was downloaded from Google Fonts during development and is served from the same origin, so the browser does not contact Google's font servers. Pinchana does not embed third-party platform login widgets or scripts, although processing a URL necessarily asks the API to contact that platform server-side.
+Pinchana Web uses no analytics, advertising, tracking, or marketing cookies. Font Awesome and application fonts are served from the same origin. The browser does not contact external font providers. Pinchana does not embed third-party platform login widgets or scripts, although processing a URL necessarily asks the API to contact that platform server-side.
+
+## Interface languages
+
+English and Ukrainian are active interface languages. The locale cookie keeps server-rendered and client-rendered content consistent. Legal catalogs have a separate approval list; when a selected interface language does not have approved legal text, the authoritative English document is displayed with a fallback notice.
+
+Translation catalogs are reviewed as JSON pull requests. See the [translation guide](/translating/) for the `source` and `translation` format.
 
 The About diagnostics view is generated on demand. It exposes the public Web revision, sanitized API build manifest, coarse browser/device feature flags, viewport class, and generic processing state. Its copy action omits source URLs, media titles, profile data, custom origins, IP addresses, secrets, and the full browser user agent.
 

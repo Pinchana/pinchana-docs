@@ -33,7 +33,7 @@ The API URL is `PINCHANA_API_URL`, a server-only variable. There is no machine k
 
 ## Same-origin proxying
 
-`POST /api/scrape` validates a browser-supplied HTTP(S) URL, forwards to `/web/scrape` with the signed bearer token, and recursively rewrites `/web/media/...` paths to `/api/media/...`. The media route rejects empty/dot path segments, URL-encodes each segment, forwards range requests, streams the response, and marks it private/no-store.
+`POST /api/scrape` validates a browser-supplied HTTP(S) URL, forwards to `/v1/web/scrape` with the signed bearer token, and recursively rewrites `/web/media/...` paths to `/api/media/...`. The media route rejects empty or dot path segments, URL-encodes each segment, forwards range requests, streams the response, and marks it private with `no-store` caching.
 
 `GET /api/build` fetches the API's public build manifest without forwarding deployment configuration and sanitizes it before About displays it. DLP proxy routes keep the same browser-session boundary, forward cookie ciphertext without decrypting it, and stream completed files with range metadata rather than buffering them.
 

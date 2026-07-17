@@ -9,9 +9,13 @@ The canonical base URL is `https://api.pinchana.cc`. A self-hosted origin expose
 
 ## Core routes
 
-### `POST /scrape`
+### `POST /v1/scrape`
 
-Authenticates with `X-API-Key`, accepts [`ScrapeRequest`](/api/schemas/#scraperequest), selects a module from the URL, and returns [`ScrapeResponse`](/api/schemas/#scraperesponse). Container forwarding uses a 10-second connect and 120-second total timeout.
+Authenticates with `X-API-Key`, accepts a [`ScrapeRequest`](/api/schemas/#scrape-request), selects a module from the URL, and returns the normalized [API v1 success or error envelope](/api/schemas/). Container forwarding uses a 10-second connection timeout and a 120-second total timeout.
+
+### `POST /scrape` (legacy)
+
+Uses the same authentication, request body, routing, and forwarding limits but returns the earlier flat response. Existing clients may continue to use this route. New clients should use `/v1/scrape`.
 
 ### `GET /media/{platform}/{post_id}/{filename:path}`
 
@@ -57,6 +61,18 @@ These routes use the signed browser bearer session, not `X-API-Key`, and are ava
 
 See [Private downloads (DLP)](/api/private-downloads-dlp/) for the protocol, request bodies, cryptography, ownership rules, and state transitions.
 
+## Browser scrape routes
+
+These routes use the signed browser bearer session rather than `X-API-Key`.
+
+| Method and path | Purpose |
+| --- | --- |
+| `POST /v1/web/scrape` | Return the normalized API v1 envelope and rewrite protected assets under `/web/media/...` |
+| `POST /web/scrape` | Return the legacy flat response for older Web clients |
+| `GET /web/media/{platform}/{post_id}/{filename:path}` | Stream one protected cache file to the owning browser session |
+
+The official Next.js application exposes same-origin `/api/scrape` and `/api/media/...` proxies. Browser code never receives the API machine key or private API origin.
+
 ## Public Web metadata
 
 `GET /web/build` returns `{"version":"preview","commits":{...}}` without authentication. Official images bake the parent API revision and public submodule repository/revision pairs during CI. The gateway validates entry names, hexadecimal commits, and public HTTPS GitHub repository URLs before returning them; malformed or private-looking entries are omitted. The Web BFF sanitizes the response again before showing it in About diagnostics.
@@ -69,4 +85,4 @@ FastAPI supplies:
 - `GET /redoc` — ReDoc
 - `GET /openapi.json` — the generated OpenAPI document
 
-These reflect the routes and response models mounted in that running instance, including any in-process plugin routers.
+These reflect the gateway routes and response models mounted in that running instance, including any in-process plugin routers. Container modules expose their own OpenAPI documents on their internal service origins; the public gateway document does not require every module to be online.

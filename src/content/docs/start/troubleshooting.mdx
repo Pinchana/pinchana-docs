@@ -14,6 +14,8 @@ import { Aside } from '@astrojs/starlight/components';
 
 For operators, local success does not prove production configuration: Cloudflare's always-pass test pair deliberately skips normal hostname/action enforcement in Pinchana. Production needs a real site key registered for the exact Web hostname, its matching private secret on the API, `TURNSTILE_EXPECTED_HOSTNAME` set to the Web hostname without a scheme, and action `turnstile-spin-v1`.
 
+Open the browser's Network panel and select **Retry verification**. A successful attempt must send `POST /api/verify` from the Web app. If that request never appears, investigate the widget, browser extensions, content security policy, and public site-key configuration before inspecting the API. Console messages such as `600010`, Private Access Token notices, `content.js` errors, or WebGL warnings are browser or challenge signals; they are not, by themselves, evidence that the Pinchana API rejected a token. If `/api/verify` appears, inspect its status and the corresponding API log entry to distinguish Siteverify rejection from a Web-to-API routing failure.
+
 ## The session expired
 
 The default API session lasts 12 hours; an operator can configure 60 seconds through 24 hours. The app detects the expiry time and locks the form. Verify again. Switching API instances also clears the current session because sessions belong to one API origin.
@@ -25,6 +27,8 @@ Use a complete public HTTP(S) post, Reel, Short, track, or playlist URL from the
 ## Media is unavailable
 
 The post may be private, deleted, region-restricted, age-gated, rate-limited, or changed upstream. Try the original URL in a normal browser, retry later, or ask the instance operator to inspect `/health` and module logs. Cached URLs can also disappear after size-based eviction; process the source URL again to rebuild them.
+
+The v1 API reports structured error codes. `unsupported_url` means that no configured route accepted the URL. `scrape_rejected` means that the selected platform module understood the URL but could not produce a result, commonly because the post is unavailable or restricted. `scrape_upstream_error` indicates a module or network failure. `media_unavailable` applies after a successful scrape when a cached or proxied media resource can no longer be served. Preserve the code and `request_id` when reporting a failure.
 
 ## Audio conversion fails
 
@@ -50,7 +54,7 @@ If the official app works but a custom instance does not, the custom operator mu
 
 | Symptom | Likely cause and fix |
 | --- | --- |
-| DLP services are absent after `docker compose up -d` | They are optional. Use `docker compose --env-file .env --profile dlp up -d ...`; place `--profile` before `up`. |
+| DLP services are absent after a normal Compose start | They are optional. Use `docker compose --env-file .env --profile dlp up --detach ...`; place `--profile dlp` before `up`. |
 | DLP preflight rejects a secret | Replace every placeholder with a distinct random value of at least 32 characters. Do not reuse the gateway, owner, Redis, or Turnstile session secret. |
 | Preflight rejects an image | Use immutable tags/digests, run `scripts/update-dlp-image-pins.py`, pull the pinned VPN image, and ensure all four images exist locally. |
 | Preflight rejects the jobs path | Use an existing absolute, non-symlink, non-world-writable host directory such as `/srv/pinchana-dlp/jobs` with mode `0711`. |
@@ -59,3 +63,5 @@ If the official app works but a custom instance does not, the custom operator mu
 | Gluetun reports `AUTH_ERROR` | Verify the provider WireGuard key. Recreate through Compose; do not use `docker restart gluetun`. |
 | Web About shows `development` | Bake a full hexadecimal commit with `NEXT_PUBLIC_PINCHANA_WEB_COMMIT="$(git rev-parse HEAD)" docker compose build web`; Compose cannot derive it from `.env`. |
 | Next build reports `EISDIR` for `next-env.d.ts` | Use the current Dockerfile, which removes the stale path before building, and ensure old bind-mounted deployment instructions are no longer in use. |
+| A supported URL returns `unsupported_url` | Confirm the exact hostname and path against the platform matrix. For Threads, current routing accepts both `threads.net` and `threads.com`; update stale module configuration before changing client input. |
+| The API returns `scrape_rejected` without enough context | Correlate `request_id` across `scrape_request`, `scrape_route_selected`, `scrape_forward`, and `scrape_rejected` logs. Compare the forwarded path and JSON body with the selected module's contract. |

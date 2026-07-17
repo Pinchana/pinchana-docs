@@ -8,16 +8,18 @@ import { Aside, Steps } from '@astrojs/starlight/components';
 ## Routine checks
 
 ```sh
-docker compose ps
-docker compose logs --tail=200 server
-curl --fail https://api.example.com/health
+cd pinchana-api
+docker compose --env-file .env ps
+docker compose --env-file .env logs --tail=100 server
+curl --fail-with-body --silent --show-error https://api.example.com/health
 ```
 
 `/health` checks every configured module and returns `503` when any one is unhealthy. Inspect that module and Gluetun together because module health verifies VPN state when `VPN_ENABLED=true`.
 
 ```sh
-docker compose logs --tail=200 gluetun shorts
-curl --header 'X-API-Key: REPLACE_WITH_ADMIN_KEY' \
+docker compose --env-file .env logs --tail=100 gluetun shorts
+curl --fail-with-body --silent --show-error \
+  --header 'X-API-Key: REPLACE_WITH_ADMIN_KEY' \
   https://api.example.com/admin/vpn/status
 ```
 
@@ -34,8 +36,8 @@ Use `POST /admin/vpn/rotate` for an in-process tunnel rotation. It has a 90-seco
 Never run `docker restart gluetun`: it can clear VPN credentials and lead to `AUTH_ERROR`. Recreate it through Compose:
 
 ```sh
-docker compose up -d --force-recreate gluetun
-docker compose up -d
+docker compose --env-file .env up --detach --force-recreate gluetun
+docker compose --env-file .env up --detach
 ```
 
 Because every production service shares Gluetun's network namespace, recreating it may require dependent services to be recreated as well. Confirm `docker compose ps` and `/health` afterward.
@@ -54,7 +56,7 @@ Use the profile on inspection commands or Compose will hide its optional service
 
 ```sh
 docker compose --env-file .env --profile dlp ps
-docker compose --env-file .env --profile dlp logs --tail=200 \
+docker compose --env-file .env --profile dlp logs --tail=100 \
   dlp-redis dlp-vpn dlp-api dlp-orchestrator
 docker ps --filter label=pinchana.dlp.job
 ```
@@ -65,10 +67,10 @@ If the private-download path becomes unsafe or unreliable, set `DLP_ENABLED=fals
 
 <Steps>
 1. Record deployed tags and back up configuration plus any irreplaceable volume data.
-2. Pull the intended immutable release tag and validate configuration: `docker compose --env-file .env config --quiet`.
-3. Run `docker compose pull` and `docker compose up -d`.
+2. Select the intended immutable release tag and validate configuration: `docker compose --env-file .env config --quiet`.
+3. Run `docker compose --env-file .env pull` and `docker compose --env-file .env up --detach`.
 4. Verify Compose state, aggregate health, authenticated scrape, and a range media fetch.
-5. On failure, restore the previous image tags and run `docker compose up -d` again. Avoid deleting the cache volume during rollback.
+5. On failure, restore the previous image tags and run `docker compose --env-file .env up --detach` again. Do not delete the cache volume during rollback.
 </Steps>
 
 Images use `ghcr.io/pinchana/pinchana-api/<service>:<tag>`. `main` publishes `latest`, `stable` publishes `stable`, and a release such as `v0.2.beta` publishes `0.2.beta` plus `stable`. Prefer an explicit release tag for repeatable production rollouts.

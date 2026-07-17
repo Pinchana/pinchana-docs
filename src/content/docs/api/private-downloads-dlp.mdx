@@ -223,6 +223,6 @@ This design does not protect against XSS, a malicious browser extension, a compr
 
 Keep `DLP_ENABLED=false` while deploying Redis, the DLP API, dedicated VPN, orchestrator, worker image, and temporary host directory. Use distinct non-placeholder secrets for the gateway credential, owner derivation, and Redis password. Pin all DLP images to immutable release tags or digests, run the repository's production preflight, complete an anonymous and encrypted-cookie canary, and enable the capability last.
 
-In the integrated `pinchana-api` deployment, put the global profile option before the Compose command: `docker compose --env-file .env --profile dlp up ...`. A normal `docker compose up -d` omits DLP by design. The standalone `pinchana-dlp` repository is a component-development stack and uses `REDIS_PASSWORD`; production uses the API repository's profile and `DLP_REDIS_PASSWORD`.
+In the integrated `pinchana-api` deployment, put the global profile option before the Compose command: `docker compose --env-file .env --profile dlp up --detach ...`. A normal start without `--profile dlp` omits DLP by design. The standalone `pinchana-dlp` repository is a component-development stack and uses `REDIS_PASSWORD`; production uses the API repository's profile and `DLP_REDIS_PASSWORD`.
 
 See [API environment reference](/self-hosting/api-environment/#private-download-dlp) and [Deploy the API](/deployment/api/#optional-dlp-profile).

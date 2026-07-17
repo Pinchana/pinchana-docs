@@ -1,6 +1,6 @@
 # Pinchana Docs
 
-The English documentation hub for [Pinchana Web](https://github.com/Pinchana/pinchana-web) and [Pinchana API](https://github.com/Pinchana/pinchana-api). It is an Astro Starlight site published at <https://docs.pinchana.cc>.
+The English documentation hub for Pinchana Web, API, DLP, and project contributors. It is an Astro Starlight site published at <https://docs.pinchana.cc>.
 
 ## Local development
 
@@ -18,7 +18,7 @@ Use `bun run dev:foreground` only when an attached foreground server is useful.
 
 ## Authoring
 
-Documentation lives in `src/content/docs/`. The folder names follow the sidebar groups configured in `astro.config.mjs`: `start`, `api`, `web`, `self-hosting`, and `deployment`. Use lowercase kebab-case filenames, one H1 supplied by frontmatter, descriptive link text, and language tags on code fences. Prefer Starlight Cards, Steps, Tabs, and asides when they make a workflow easier to scan.
+Documentation lives in `src/content/docs/`. The component-oriented folders are `start`, `web`, `api`, `dlp`, `translating`, `self-hosting`, and `deployment`. Use lowercase kebab-case filenames, one H1 supplied by frontmatter, descriptive link text, and language tags on code fences. Use Starlight Cards, Steps, Tabs, and asides only when they improve comprehension.
 
 Treat the repositories as the source of truth. Before documenting a command or default, check the current Compose file, environment example, runtime validation, and operational scripts. Keep the quickstart linear and link to reference pages for exhaustive options instead of maintaining two competing setup procedures.
 
@@ -38,6 +38,6 @@ bun run build
 The build is fully static and requires no API or Web service at runtime. Production hosting uses `docker-compose.yml`: a one-shot Bun service builds into a named volume and Nginx serves it on `127.0.0.1:4321` by default.
 
 ```sh
-docker compose up -d
+docker compose up --detach
 docker compose ps
 ```

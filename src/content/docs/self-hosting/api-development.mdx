@@ -13,7 +13,7 @@ Work inside its package:
 
 ```sh
 cd pinchana-inst
-uv sync
+uv sync --frozen
 VPN_ENABLED=false uv run uvicorn pinchana_inst.main:app --reload --port 8082
 uv run python -c "import pinchana_inst; print('ok')"
 ```
@@ -23,8 +23,9 @@ Service ports are gateway 8080, TikTok 8081, Instagram 8082, Shorts 8083, SoundC
 Build a service image from the **repository root** because Dockerfiles copy both core and target service:
 
 ```sh
-docker build -f pinchana-inst/Dockerfile -t pinchana-inst .
-docker compose -f docker-compose.dev.yml up -d --build
+cd ..
+docker build --file pinchana-inst/Dockerfile --tag pinchana-inst:local .
+docker compose --env-file .env --file docker-compose.dev.yml up --detach --build
 ```
 
 ## Tests
@@ -33,7 +34,7 @@ Coverage is module-specific. Run a package's suite from that submodule so uv use
 
 ```sh
 cd pinchana-inst
-uv run pytest
+uv run pytest -q
 PINCHANA_INST_LIVE=1 uv run pytest
 ```
 
@@ -59,7 +60,7 @@ cp example.env .env
 # Replace REDIS_PASSWORD, DLP_GATEWAY_TOKEN, WIREGUARD_PRIVATE_KEY,
 # and DLP_HOST_JOBS_DIR with real development values.
 docker compose --profile build build worker-image
-docker compose up --build -d redis dlp-api vpn orchestrator
+docker compose --env-file .env up --detach --build redis dlp-api vpn orchestrator
 ```
 
 `worker-image` is assigned to the `build` profile because it is an image-only helper, not a long-running service. The `--profile build` option is needed for its build command but must not be used as if it were the integrated production profile. `./start.sh` performs the same two commands after checking that `.env` exists.
@@ -80,3 +81,15 @@ Use an absolute `DLP_HOST_JOBS_DIR`; the orchestrator passes that host path thro
 <Aside type="caution">
 Use async network I/O. Do not add root-level formatter/test commands that do not exist, expose scraper ports in production, or commit caches, `__pycache__`, cookies, or credentials.
 </Aside>
+
+## Trace gateway routing
+
+When a valid URL returns `400`, compare the client request with `config/modules.yaml` before changing the request body. A routing mismatch can produce `No module handles this URL` even when `{"url":"..."}` is valid.
+
+```sh
+# Run from the pinchana-api repository root.
+docker compose --env-file .env --file docker-compose.dev.yml logs --tail=200 server \
+  | rg 'scrape_request|scrape_route_selected|scrape_rejected|scrape_forward|scrape_upstream_error'
+```
+
+Route patterns must remain aligned between `config/modules.yaml` and the module's own router registration. Threads must accept both `threads.net` and `threads.com`.

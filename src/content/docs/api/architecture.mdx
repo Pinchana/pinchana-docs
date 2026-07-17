@@ -6,15 +6,15 @@ description: Gateway routing, module modes, cache, Gluetun networking, and the s
 ## Request path
 
 ```text
-POST /scrape
+POST /v1/scrape
   → validate key and ScrapeRequest
   → match URL against in-process plugins, then container registry
   → call /{plugin}/scrape in-process OR {module endpoint}/scrape over HTTP
-  → normalize to ScrapeResponse
+  → normalize to the API v1 result and metadata envelopes
   → serve downloaded paths from the shared cache
 ```
 
-`IN_PROCESS_PLUGINS` imports Python modules that register routers and is intended primarily for local development. The container registry always reads `MODULES_CONFIG` (default `/app/config/modules.yaml`) and assumes configured services are already running. `CONTAINER_MODE=true` adds a separate Docker-socket-backed manager able to build/start/stop them.
+`IN_PROCESS_PLUGINS` imports Python modules that register routers and is intended primarily for local development. The container registry always reads `MODULES_CONFIG` (default `/app/config/modules.yaml`) and assumes that configured services are already running. `CONTAINER_MODE=true` adds a separate Docker-socket-backed manager that can build, start, and stop them. The unversioned `/scrape` route remains available for legacy clients.
 
 ## Private download path
 

@@ -57,8 +57,9 @@ TURNSTILE_SESSION_SECRET=REPLACE_WITH_AT_LEAST_32_RANDOM_CHARACTERS
 Apply and verify the configuration through the final public HTTPS origin:
 
 ```sh
-docker compose up -d --force-recreate server
-curl --fail --silent https://api.example.com/web/identity
+docker compose --env-file .env up --detach --force-recreate server
+curl --fail-with-body --silent --show-error \
+  https://api.example.com/web/identity
 ```
 
 The response must contain the installed `payload` and `signature`. A `503` means the certificate was not available inside the server container. The API's `/web/identity` response is public, cached for five minutes, and allows all origins because the certificate is already public and cryptographically verified.

@@ -1,0 +1,62 @@
+---
+title: Translate Pinchana
+description: Translate the Pinchana Web interface or legal pages by editing JSON and opening a pull request.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Pinchana translations are ordinary JSON files reviewed through GitHub pull requests. You do not need a translation account or a separate translation service.
+
+- [Application catalogs](https://github.com/Pinchana/pinchana-web/tree/main/messages/app) contain the interface, accessibility labels, notifications, metadata, and Web-owned API messages.
+- [Legal catalogs](https://github.com/Pinchana/pinchana-web/tree/main/messages/legal) contain the Privacy Policy and Terms of Use.
+- [`en.json`](https://github.com/Pinchana/pinchana-web/blob/main/messages/app/en.json) is the authoritative English application catalog.
+
+Each message keeps the English source beside its translation:
+
+```json
+{
+  "language": {
+    "pickerLabel": {
+      "source": "Change language",
+      "translation": "Змінити мову"
+    }
+  }
+}
+```
+
+Edit only `translation`. Keep the JSON key and `source` value unchanged so automated checks can detect an outdated or misaligned catalog.
+
+## Translate an existing language
+
+<Steps>
+1. Open the target file in the [application](https://github.com/Pinchana/pinchana-web/tree/main/messages/app) or [legal](https://github.com/Pinchana/pinchana-web/tree/main/messages/legal) catalog directory.
+2. Fork the repository and edit the `translation` values. GitHub's file editor is enough for a small change.
+3. Preserve variables such as `{language}`, plural/select blocks, and rich-text tags such as `<link>...</link>` exactly. Their surrounding words may be translated.
+4. Open a pull request against [`Pinchana/pinchana-web`](https://github.com/Pinchana/pinchana-web/compare) and say which language and catalog you changed.
+</Steps>
+
+Do not translate product or service names, codecs, cookie identifiers, URLs, filenames, build revisions, or raw errors returned by an upstream API.
+
+## Start a new language
+
+Copy the relevant English file to `messages/app/<locale>.json` or `messages/legal/<locale>.json`, using the appropriate BCP 47 locale code for the filename. Leave every `source` value unchanged and replace only `translation` values.
+
+It is fine to submit an incomplete catalog for continued review, but it will not appear in the language picker. After the application catalog is complete, maintainers add its static importer and register its native label, text direction, and flag in [`i18n/config.ts`](https://github.com/Pinchana/pinchana-web/blob/main/i18n/config.ts).
+
+<Aside type="caution" title="Legal translations are activated separately">
+English legal text is authoritative. A translated legal catalog requires its own accuracy review before maintainers add the locale to `APPROVED_LEGAL_LOCALES`. Until then, legal pages continue to show English with the fallback notice.
+</Aside>
+
+## Check a local contribution
+
+If you cloned the repository, run the catalog and application checks before opening the pull request:
+
+```sh
+cd pinchana-web
+bun install --frozen-lockfile
+bun run test
+bun run lint
+bunx tsc --noEmit
+```
+
+The catalog tests reject missing active messages, blank translations, changed English sources, invalid ICU syntax, and mismatched variables or rich-text tags. Maintainers run the production build and perform the final interface and legal review before merging or activating a locale.

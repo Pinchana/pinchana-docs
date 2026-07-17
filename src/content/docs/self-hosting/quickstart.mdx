@@ -20,13 +20,13 @@ Use Docker Engine with the Compose v2 plugin, prebuilt API images, and the Web r
 Use `docker-compose.dev.yml` for the API or run one Python package with uv. Run the Web app with Bun. Cloudflare's documented Turnstile test keys are appropriate only for local development.
 
 ```sh
-git clone --recursive https://github.com/Pinchana/pinchana-api.git
+git clone --recurse-submodules https://github.com/Pinchana/pinchana-api.git
 git clone https://github.com/Pinchana/pinchana-web.git
 
 cd pinchana-api
 cp .env.example .env
 # Configure PINCHANA_API_KEYS and the documented Turnstile test secret.
-docker compose -f docker-compose.dev.yml up -d --build
+docker compose --env-file .env -f docker-compose.dev.yml up --detach --build
 
 cd ../pinchana-web
 cp .env.example .env.local
@@ -48,7 +48,7 @@ You need a current Linux host with Git, Docker Engine, the `docker compose` plug
 docker --version
 docker compose version
 test -c /dev/net/tun
-git clone --recursive https://github.com/Pinchana/pinchana-api.git
+git clone --recurse-submodules https://github.com/Pinchana/pinchana-api.git
 git clone https://github.com/Pinchana/pinchana-web.git
 ```
 
@@ -71,7 +71,7 @@ Generate credentials locally. The examples print values for you to copy into `.e
 
 ```sh
 # One machine key. Add more JSON entries for independently revocable clients.
-printf 'PINCHANA_API_KEYS={"bot":"%s"}\n' "$(openssl rand -hex 32)"
+printf 'PINCHANA_API_KEYS={"automation":"%s"}\n' "$(openssl rand -hex 32)"
 
 # Generate each secret separately. Never reuse one value for another purpose.
 openssl rand -hex 32  # GLUETUN_API_KEY
@@ -81,14 +81,14 @@ openssl rand -hex 32  # DLP_OWNER_SECRET, only if enabling DLP
 openssl rand -hex 32  # DLP_REDIS_PASSWORD, only if enabling DLP
 ```
 
-`PINCHANA_API_KEYS` must remain a one-line JSON object. The names such as `bot` are server-side audit labels; clients send only the corresponding value in `X-API-Key`. To rotate one client, replace only that value and recreate `server`.
+`PINCHANA_API_KEYS` must remain a one-line JSON object. Names such as `automation` are server-side audit labels; clients send only the corresponding value in `X-API-Key`. To rotate one client, replace only that value and recreate `server`.
 
 At minimum, configure the VPN, machine authentication, and browser authentication:
 
 ```ini
 WIREGUARD_PRIVATE_KEY=REPLACE_WITH_PROVIDER_WIREGUARD_PRIVATE_KEY
 GLUETUN_API_KEY=REPLACE_WITH_RANDOM_CONTROL_KEY
-PINCHANA_API_KEYS={"bot":"REPLACE_WITH_RANDOM_MACHINE_KEY"}
+PINCHANA_API_KEYS={"automation":"REPLACE_WITH_RANDOM_MACHINE_KEY"}
 
 TURNSTILE_SECRET_KEY=REPLACE_WITH_PRIVATE_SITEVERIFY_SECRET
 TURNSTILE_EXPECTED_HOSTNAME=pinchana.example.com
@@ -122,16 +122,17 @@ Render Compose first and inspect it privately—the output contains interpolated
 ```sh
 docker compose --env-file .env config --quiet
 docker compose --env-file .env pull
-docker compose --env-file .env up -d
+docker compose --env-file .env up --detach
 docker compose --env-file .env ps
 docker compose --env-file .env logs --tail=100 gluetun server
 ```
 
-`docker compose up -d` starts the normal scraper stack but not services assigned to the `dlp` profile. Verify `/health`, one authenticated scrape, and a range request before continuing:
+The normal Compose start shown above starts the scraper stack but not services assigned to the `dlp` profile. Verify `/health`, one authenticated scrape, and a range request before continuing:
 
 ```sh
-curl --fail https://api.example.com/health
-curl --fail --request POST https://api.example.com/scrape \
+curl --fail-with-body --silent --show-error https://api.example.com/health
+curl --fail-with-body --silent --show-error \
+  --request POST https://api.example.com/v1/scrape \
   --header 'Content-Type: application/json' \
   --header 'X-API-Key: REPLACE_WITH_MACHINE_KEY' \
   --data '{"url":"https://www.instagram.com/p/REPLACE_WITH_REAL_PUBLIC_SHORTCODE/"}'
@@ -163,8 +164,8 @@ Compose cannot execute `git rev-parse` while interpolating `.env`, and repositor
 
 ```sh
 NEXT_PUBLIC_PINCHANA_WEB_COMMIT="$(git rev-parse HEAD)" docker compose build web
-docker compose up -d web
-docker compose ps
+docker compose --env-file .env up --detach web
+docker compose --env-file .env ps
 ```
 
 Proxy `https://pinchana.example.com` to `127.0.0.1:3000`, complete Turnstile, process a URL, preview it, and test a save. Do not put `PINCHANA_API_KEYS`, Turnstile secrets, DLP credentials, cookies, or VPN credentials in the Web environment.
@@ -193,7 +194,7 @@ The official GHCR packages are intended to be publicly readable. If the registry
 The profile switch is a global Compose option and should appear before the subcommand:
 
 ```sh
-docker compose --env-file .env --profile dlp up -d \
+docker compose --env-file .env --profile dlp up --detach \
   dlp-redis dlp-vpn dlp-api dlp-orchestrator
 docker compose --env-file .env --profile dlp ps
 docker compose --env-file .env --profile dlp logs --tail=100 \
@@ -203,7 +204,7 @@ docker compose --env-file .env --profile dlp logs --tail=100 \
 Starting the profile does not advertise DLP to browsers. First require every service to become healthy and run anonymous plus encrypted-cookie canaries on a non-public instance. Then change `DLP_ENABLED=true`, recreate only the gateway, and run the enable-phase check:
 
 ```sh
-docker compose --env-file .env up -d --no-deps --force-recreate server
+docker compose --env-file .env up --detach --no-deps --force-recreate server
 python3 scripts/dlp-prod-preflight.py --env-file .env --phase enable
 ```
 

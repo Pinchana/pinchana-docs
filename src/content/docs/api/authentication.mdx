@@ -12,7 +12,7 @@ PINCHANA_API_KEYS={"automation":"REPLACE_WITH_LONG_RANDOM_SECRET","ci":"REPLACE_
 Generate a 256-bit hexadecimal value for each client and keep the resulting JSON on one dotenv line:
 
 ```sh
-printf 'PINCHANA_API_KEYS={"bot":"%s"}\n' "$(openssl rand -hex 32)"
+printf 'PINCHANA_API_KEYS={"automation":"%s"}\n' "$(openssl rand -hex 32)"
 ```
 
 To add another independently revocable client, generate another value and add another JSON property. Do not copy the same secret under multiple names. Compose accepts the JSON shown above directly in `.env`; malformed JSON or an array/string instead of an object disables configured machine authentication.
@@ -27,7 +27,8 @@ The gateway compares configured values using constant-time comparison and logs t
 
 ## Protected machine routes
 
-- `POST /scrape`
+- `POST /v1/scrape` (canonical)
+- `POST /scrape` (legacy compatibility)
 - `GET /media/{platform}/{post_id}/{filename}`
 - every `/admin/...` route
 

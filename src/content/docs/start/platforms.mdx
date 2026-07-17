@@ -10,21 +10,22 @@ The gateway matches URL text against the configured module patterns. Public, acc
 | TikTok | `tiktok.com`, `vm.tiktok.com`, `vt.tiktok.com` | Video, or an image slideshow/carousel with a separate audio file when available |
 | Instagram | `instagram.com`, `instagr.am` | Post/Reel video, image, or mixed carousel |
 | YouTube | `youtube.com`, its subdomains, and `youtu.be` | Official Web uses optional DLP for video/audio formats, subtitles, large downloads, and explicit cookie profiles |
-| YouTube Shorts | `youtube.com/shorts`, including `www` and mobile hosts | Machine `/scrape` uses the Shorts module; official Web routes the URL through YouTube DLP |
+| YouTube Shorts | `youtube.com/shorts`, including `www` and mobile hosts | Machine API uses the Shorts module; official Web routes the URL through YouTube DLP |
 | SoundCloud | `soundcloud.com`, `on.soundcloud.com` | MP3 audio, title/artist, duration, and cover when available |
-| YouTube Music | `music.youtube.com` | Machine `/scrape` uses the music module; official Web locks Audio only and uses DLP output options |
+| YouTube Music | `music.youtube.com` | Machine API uses the music module; official Web locks Audio only and uses DLP output options |
 | Spotify | `open.spotify.com` | Audio metadata and downloaded MP3; requires configured Spotify API credentials on the instance |
 | Deezer | `deezer.com`, `deezer.page.link`, `link.deezer.com` | Audio metadata and downloaded MP3 |
 | Threads | `threads.net`, `threads.com` | Image, video, carousel, or text-only metadata |
-| Twitter / X | `x.com`, `twitter.com`, `vxtwitter.com`, `fxtwitter.com` | Image, video, carousel, or text-only metadata |
+| Twitter / X | `x.com`, `twitter.com`, `vxtwitter.com`, `fxtwitter.com` | Image, video, looping GIF-style video, carousel, or text-only metadata |
 
-## Result shapes
+## API v1 result shapes
 
-- **Single video:** one playable/downloadable video plus thumbnail and post metadata.
-- **Single image:** one image, represented by `thumbnail_url` when there is no video.
-- **Carousel:** ordered `carousel` items; each item uses `video_url` when it is a video and `thumbnail_url` for its preview or image.
-- **TikTok slideshow:** an all-image carousel and, when found, a separate `audio_url`. Media mode includes both in the saved set.
-- **Music:** a top-level `audio_url`; `cover_url`, `duration`, `title`, and `album` are optional.
-- **Track list:** ordered `tracklist` entries. The Web app names and optionally ZIPs each track. The schema supports this even when a particular module currently returns a single track.
+- **Single video:** one `content` video asset with an optional `preview_url` and measured dimensions.
+- **Single image:** one `content` image asset.
+- **Carousel:** multiple `content` assets ordered by `index`.
+- **TikTok slideshow:** ordered image assets plus a `soundtrack` audio asset when available.
+- **Looping media:** a video asset with `looping: true`. The Web app may convert this Twitter/X media to GIF according to the user's setting.
+- **Music:** one or more audio assets, optional cover assets, and title, artist, duration, or album metadata when supplied.
+- **Text-only post:** content and author metadata with an empty media array.
 
-Text-only Threads or X posts can have metadata but no downloadable assets. A platform may also remove media, require login, rate-limit the scraper, or return formats that its current module cannot use.
+Threads uses an HTTP-first extraction path and a pooled browser fallback for gated or incomplete pages. Threads music may add a 30-second soundtrack preview and cover. A platform may remove media, require authentication, rate-limit the scraper, or return an unsupported upstream response. These conditions are distinct [API v1 errors](/api/errors-media/#api-v1-error-codes).

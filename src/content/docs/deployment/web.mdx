@@ -28,7 +28,7 @@ Configure the selected API separately with the matching Turnstile secret, expect
 <Steps>
 1. Clone [Pinchana Web](https://github.com/Pinchana/pinchana-web) on the Docker host.
 2. Create a mode-0600 `.env` beside `docker-compose.yml` with the required variables. Compose reads it for interpolation; it is not copied into the image.
-3. Run `docker compose config` and inspect the effective configuration without sharing it because it contains deployment values.
+3. Run `docker compose --env-file .env config --quiet`. Inspect the full effective configuration only in a private terminal because it contains deployment values.
 4. Build with the exact revision, then start the immutable image.
 5. Wait for `docker compose ps` to report the service healthy, then proxy HTTPS to `127.0.0.1:3000`.
 </Steps>
@@ -46,8 +46,8 @@ The Docker build context excludes `.git`, so it cannot discover a revision by it
 
 ```sh
 NEXT_PUBLIC_PINCHANA_WEB_COMMIT="$(git rev-parse HEAD)" docker compose build web
-docker compose up -d web
-docker compose logs --tail=100 web
+docker compose --env-file .env up --detach web
+docker compose --env-file .env logs --tail=100 web
 ```
 
 The Dockerfile removes any stale `next-env.d.ts` path before `next build`, avoiding a host-created directory from breaking TypeScript generation. The final image contains the compiled application, production dependencies, public assets, and local FFmpeg worker/core; it does not bind-mount the source tree or install packages during container startup.
@@ -58,8 +58,9 @@ Put Caddy, Nginx, Traefik, or another HTTPS reverse proxy in front of the loopba
 
 ```sh
 git pull --ff-only
-NEXT_PUBLIC_PINCHANA_WEB_COMMIT="$(git rev-parse HEAD)" docker compose up -d --build web
-docker compose logs --tail=100 web
+NEXT_PUBLIC_PINCHANA_WEB_COMMIT="$(git rev-parse HEAD)" \
+  docker compose --env-file .env up --detach --build web
+docker compose --env-file .env logs --tail=100 web
 ```
 
 The site key and revision are frozen into the build, so changing either requires rebuilding. Roll back by checking out the previous revision and rebuilding that image. Preserve the `.env`; there are no application data volumes.

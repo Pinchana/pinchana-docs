@@ -1,0 +1,57 @@
+---
+title: DLP operations and security
+description: Prepare, verify, enable, monitor, and roll back protocol-v2 private downloads.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Pinchana DLP is an internal asynchronous service for private YouTube downloads. It is not a scraper module and must not be exposed directly to browsers or the public network.
+
+## Trust boundaries
+
+| Component | Responsibility | Prohibited access |
+| --- | --- | --- |
+| Gateway | Authenticates the signed Web session and derives the opaque job owner | Plaintext cookies and Docker socket |
+| DLP API | Validates service token, ownership, state, limits, URL, and ciphertext | Docker socket and plaintext cookies |
+| Orchestrator | Creates one constrained worker for each job | Browser sessions and cookie decryption |
+| Worker | Decrypts cookies briefly in a memory-backed directory and runs pinned download tools | Persistent cookie storage and unrelated job files |
+| Redis | Stores job state and ciphertext | Plaintext cookies and completed media |
+
+## Production sequence
+
+<Steps>
+1. Set `DLP_ENABLED=false` while infrastructure is prepared.
+2. Assign distinct random values to the gateway, owner, and Redis secrets.
+3. Create the absolute jobs directory with restrictive ownership and mode.
+4. Resolve the API, orchestrator, and worker image references to immutable digests.
+5. Run the infrastructure preflight and start Redis, DLP API, VPN, and orchestrator.
+6. Perform anonymous and encrypted-cookie canaries.
+7. Set `DLP_ENABLED=true`, recreate only the gateway, and run the enable preflight.
+</Steps>
+
+```sh
+cd pinchana-api
+sudo install -d -o root -g root -m 0711 /srv/pinchana-dlp/jobs
+python3 scripts/update-dlp-image-pins.py --env-file .env --dry-run
+python3 scripts/update-dlp-image-pins.py --env-file .env
+docker compose --env-file .env --profile dlp pull
+python3 scripts/dlp-prod-preflight.py --env-file .env --phase infra
+docker compose --env-file .env --profile dlp up --detach dlp-redis dlp-api dlp-vpn dlp-orchestrator
+```
+
+The pin updater changes only `DLP_API_IMAGE`, `DLP_ORCHESTRATOR_IMAGE`, and `DLP_WORKER_IMAGE`. The VPN image remains an explicit operator-controlled pin.
+
+## Monitoring and rollback
+
+```sh
+cd pinchana-api
+docker compose --env-file .env --profile dlp ps
+docker compose --env-file .env --profile dlp logs --tail=100 dlp-api dlp-orchestrator dlp-vpn
+curl --fail-with-body --silent --show-error http://127.0.0.1:8080/health
+```
+
+To remove the public capability, set `DLP_ENABLED=false` and recreate the gateway first. Existing internal services may remain available while the incident is investigated. If infrastructure must be stopped, preserve Redis and job-directory evidence until active jobs and retention requirements have been evaluated.
+
+<Aside type="caution">
+Do not use mutable `latest` tags in production, reuse secrets across trust boundaries, mount the jobs directory through a symlink, or place the DLP API, Redis, worker network, orchestrator, or Docker socket on a public interface.
+</Aside>

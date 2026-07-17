@@ -8,7 +8,7 @@ The docs are hosted with the repository's `docker-compose.yml`. No custom Pincha
 ```sh
 git clone https://github.com/Pinchana/pinchana-docs.git
 cd pinchana-docs
-docker compose up -d
+docker compose up --detach
 docker compose ps
 docker compose logs docs-build
 ```
@@ -33,11 +33,11 @@ Re-run the one-shot builder after pulling a revision; Nginx sees the updated nam
 ```sh
 git pull --ff-only
 docker compose run --rm docs-build
-docker compose up -d docs
+docker compose up --detach docs
 ```
 
 Roll back by checking out the previous revision and running the builder again. The dependency, Astro cache, and output volumes are disposable; remove and recreate them when troubleshooting a stale or corrupt build.
 
 ## Release check
 
-After deployment, verify the splash page, all five sidebar groups, the final **Deployment** group, search results from each section, canonical tags, code-copy controls, edit links, last-updated data, mobile navigation, keyboard focus, wide tables, container health, and a direct deep-link refresh. The built output must not contain private keys, real API/Turnstile/VPN/Spotify credentials, cookies, or instance envelopes.
+After deployment, verify the splash page, every sidebar group, search results from each component section, canonical tags, code-copy controls, edit links, last-updated data, mobile navigation, keyboard focus, wide tables, container health, and a direct deep-link refresh. The built output must not contain private keys, real API, Turnstile, VPN, or Spotify credentials, cookies, or instance envelopes.

@@ -1,39 +1,48 @@
 ---
 title: API quickstart
-description: Call Pinchana from cURL, JavaScript, or Python.
+description: Submit an authenticated API v1 scrape request and retrieve its protected media.
 ---
 
 import { Tabs, TabItem, Aside, Steps } from '@astrojs/starlight/components';
 
-Machine clients send a JSON URL to `POST https://api.pinchana.cc/scrape` and authenticate with `X-API-Key`. Ask the API operator for a named key; do not put machine keys in browser code.
+Machine clients should use `POST https://api.pinchana.cc/v1/scrape`. The request contains one complete HTTP(S) URL and requires a named `X-API-Key`. Machine credentials must remain in server-side configuration.
 
 <Tabs syncKey="language">
 <TabItem label="cURL">
 
 ```sh
-curl --fail-with-body https://api.pinchana.cc/scrape \
+export PINCHANA_API_KEY='REPLACE_WITH_API_KEY'
+
+curl --fail-with-body --silent --show-error \
   --request POST \
   --header 'Content-Type: application/json' \
-  --header 'X-API-Key: YOUR_API_KEY' \
-  --data '{"url":"https://www.instagram.com/p/SHORTCODE/"}'
+  --header "X-API-Key: ${PINCHANA_API_KEY}" \
+  --data '{"url":"https://www.instagram.com/p/SHORTCODE/"}' \
+  'https://api.pinchana.cc/v1/scrape'
 ```
 
 </TabItem>
 <TabItem label="JavaScript">
 
 ```js
-const response = await fetch('https://api.pinchana.cc/scrape', {
+const response = await fetch('https://api.pinchana.cc/v1/scrape', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
     'X-API-Key': process.env.PINCHANA_API_KEY,
   },
-  body: JSON.stringify({ url: 'https://www.instagram.com/p/SHORTCODE/' }),
+  body: JSON.stringify({url: 'https://www.instagram.com/p/SHORTCODE/'}),
+  signal: AbortSignal.timeout(180_000),
 });
 
-if (!response.ok) throw new Error(`${response.status}: ${await response.text()}`);
-const result = await response.json();
-console.log(result.media_type, result.video_url ?? result.thumbnail_url);
+const payload = await response.json();
+if (!response.ok) {
+  throw new Error(`${payload.error?.code ?? response.status}: ${payload.error?.message ?? 'Request failed'}`);
+}
+
+for (const asset of payload.data.media) {
+  console.log(asset.index, asset.role, asset.type, asset.url);
+}
 ```
 
 </TabItem>
@@ -41,35 +50,45 @@ console.log(result.media_type, result.video_url ?? result.thumbnail_url);
 
 ```py
 import os
+
 import httpx
 
-response = httpx.post(
-    "https://api.pinchana.cc/scrape",
-    headers={"X-API-Key": os.environ["PINCHANA_API_KEY"]},
-    json={"url": "https://www.instagram.com/p/SHORTCODE/"},
-    timeout=120,
-)
-response.raise_for_status()
-result = response.json()
-print(result["media_type"], result.get("video_url") or result["thumbnail_url"])
+with httpx.Client(timeout=180) as client:
+    response = client.post(
+        "https://api.pinchana.cc/v1/scrape",
+        headers={"X-API-Key": os.environ["PINCHANA_API_KEY"]},
+        json={"url": "https://www.instagram.com/p/SHORTCODE/"},
+    )
+    response.raise_for_status()
+    payload = response.json()
+
+for asset in payload["data"]["media"]:
+    print(asset["index"], asset["role"], asset["type"], asset["url"])
 ```
 
 </TabItem>
 </Tabs>
 
 <Steps>
-1. Store the key in a server-side secret such as `PINCHANA_API_KEY`.
-2. Submit a supported, complete HTTP(S) URL. Scraping and upstream media downloads can take time; use a client timeout near the gateway's 120-second forwarding timeout.
-3. Join relative media paths to the API origin and fetch them with the same `X-API-Key`.
+1. Store the key in a server-side secret named for the client, such as `PINCHANA_API_KEY`.
+2. Submit a supported post, track, or playlist URL. A 180-second client timeout permits the gateway's 120-second forwarding window plus network overhead.
+3. Read assets from `data.media` in ascending `index` order. Select by `role` and `type` rather than by a platform-specific field.
+4. Resolve relative media paths against the API origin and send the same `X-API-Key` for every media request.
 </Steps>
 
+The following command downloads the first known media path and verifies byte-range support:
+
 ```sh
-curl --fail --location \
-  --header 'X-API-Key: YOUR_API_KEY' \
-  --output media.mp4 \
+curl --fail-with-body --silent --show-error --location \
+  --header "X-API-Key: ${PINCHANA_API_KEY}" \
+  --header 'Range: bytes=0-1023' \
+  --output media.part \
   'https://api.pinchana.cc/media/instagram/SHORTCODE/video.mp4'
+test -s media.part
 ```
 
 <Aside type="caution">
-Treat returned media URLs as short-lived cache handles, not permanent public CDN links. They require authentication and may disappear when the cache evicts an old post.
+Media URLs are authenticated, temporary cache handles. They are not permanent public content delivery network URLs. Submit the source URL again after cache eviction.
 </Aside>
+
+The unversioned `/scrape` route remains available for existing integrations. New clients must use API v1 so that success and failure responses have stable envelopes.

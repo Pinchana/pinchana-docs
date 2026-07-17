@@ -3,7 +3,28 @@ title: Errors and media lifecycle
 description: Status codes, cache semantics, authenticated media URLs, and range requests.
 ---
 
-## Status codes
+## API v1 error codes
+
+Versioned scrape routes return `{"error":{"code":"...","message":"...","details":null}}`. Clients should branch on the stable code rather than matching the message.
+
+| Code | Meaning | Client action |
+| --- | --- | --- |
+| `unsupported_url` | No configured module matches the URL | Check the complete URL and the operator's route patterns |
+| `invalid_url` | The URL is malformed or rejected by the selected module | Ask for a complete supported post URL |
+| `unauthorized` | The API key or Web session is absent or invalid | Restore the appropriate credential; do not retry anonymously |
+| `forbidden` | The authenticated caller is not permitted | Stop and inspect the relevant authentication boundary |
+| `authentication_required` | The upstream post requires an account or audience confirmation | Explain that anonymous extraction is unavailable |
+| `restricted_media` | The platform confirms that the media is restricted | Do not perform repeated retries or VPN rotations |
+| `not_found` | The source post or requested resource no longer exists | Ask for a valid existing URL |
+| `rate_limited` | The upstream platform is limiting requests | Apply bounded backoff; do not create an unbounded retry loop |
+| `extraction_failed` | The selected scraper could not extract the current upstream response | Record diagnostics and retry only when operational policy allows |
+| `invalid_upstream_response` | A module returned data that the gateway could not normalize | Inspect gateway and module logs |
+| `service_unavailable` | A required module or service is unavailable | Check aggregate health before retrying |
+| `internal_error` | The scraper failed unexpectedly | Record the request identifier and inspect server logs |
+
+Instagram and TikTok use at most one VPN rotation and one retry for confirmed blocking signals. Login-gated, removed, and ordinary anonymous misses do not receive repeated rotations.
+
+## HTTP status codes
 
 | Status | Typical cause |
 | ---: | --- |
@@ -24,7 +45,7 @@ description: Status codes, cache semantics, authenticated media URLs, and range 
 | 502 | The Web BFF received an invalid verification response |
 | 503 | Module, verification service, gateway client, VPN, auth configuration, identity, or aggregate health unavailable |
 
-FastAPI errors generally use `{"detail": ...}`. An upstream module's error body can appear as a string nested in gateway `detail`. The official Web BFF maps failures to user-safe `{"error":"..."}` messages and hides most server-side details for 5xx errors.
+Legacy and non-versioned FastAPI errors may use `{"detail": ...}`. The official Web back end for front end maps failures to controlled `{"error":"..."}` messages and hides most server-side detail for 5xx errors.
 
 ## Cache lifecycle
 
@@ -36,6 +57,6 @@ The Compose volume `scraper-cache` is shared by the gateway and modules, so a re
 
 Machine clients must include `X-API-Key` on every media fetch. Browser clients use `/web/media/...` with a bearer session; the Next.js route exposes it as `/api/media/...`, forwards the incoming `Range` header, streams the body, and copies `Accept-Ranges`, content range/length/type/disposition, ETag, and last-modified headers. Its response is `Cache-Control: private, no-store`.
 
-Do not publish authenticated cache URLs, assume they are permanent, or strip the query-independent path components. Re-run `/scrape` when media has been evicted.
+Do not publish authenticated cache URLs, assume they are permanent, or strip path components. Re-run `/v1/scrape` when media has been evicted.
 
 DLP files are separate temporary artifacts rather than members of `scraper-cache`. They remain owner-bound to one signed browser session, are served with `no-store`, accept range requests while ready, and disappear when the job expires. Re-submit the source URL to create a new job; a normal `/scrape` cannot restore a DLP file.

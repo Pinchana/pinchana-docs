@@ -13,7 +13,7 @@ Browser routes intentionally use a different credential from machine clients.
 3. **`GET /web/session`** sends `Authorization: Bearer ACCESS_TOKEN` and returns `{"valid":true,"expires_at":UNIX_SECONDS}`.
 4. **`GET /web/build`** is public and returns only validated public source revisions baked into the API image. It contains no environment, network, key, or host data.
 5. **`GET /web/capabilities`** sends the bearer header and advertises optional features. DLP is available only when enabled, correctly configured, and healthy.
-6. **Normal scraper flow:** `POST /web/scrape` sends the same bearer header and `ScrapeRequest`. It returns the standard response with every `/media/...` value recursively rewritten to `/web/media/...`; `GET /web/media/{platform}/{post_id}/{filename}` streams the cached file.
+6. **Normal scraper flow:** `POST /v1/web/scrape` sends the same bearer header and scrape request. It returns the normalized API v1 envelope with every `/media/...` value recursively rewritten to `/web/media/...`; `GET /web/media/{platform}/{post_id}/{filename}` streams the cached file. The legacy `/web/scrape` route remains available for older clients.
 7. **Private download flow:** allocate, submit, poll, and stream an asynchronous `/web/dlp/jobs/...` job. YouTube always takes this path in the official client; cookies are optional browser-generated ciphertext. See [Private downloads (DLP)](/api/private-downloads-dlp/).
 </Steps>
 
