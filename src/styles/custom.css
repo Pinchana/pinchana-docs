@@ -21,7 +21,7 @@
 	--sl-color-bg-inline-code: #101010;
 	--sl-color-hairline-light: #292929;
 	--sl-color-hairline: #1d1d1d;
-	--sl-content-width: 58rem;
+	--sl-content-width: 66rem;
 	--sl-text-5xl: clamp(2.45rem, 7vw, 4rem);
 	--sl-font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
@@ -111,7 +111,22 @@ header button {
 	background: transparent;
 }
 
+/* Starlight centers its content container by default. That creates a large
+   empty strip between the navigation and article when a right TOC is present.
+   Keep the same readable maximum width, but anchor the article to the left
+   edge of the main pane instead. */
+.main-pane .sl-container {
+	margin-inline-start: 0;
+	margin-inline-end: auto;
+}
+
+.main-pane > .content-panel .sl-container {
+	width: 100%;
+	max-width: min(var(--sl-content-width), 100%);
+}
+
 .sl-markdown-content {
+	width: 100%;
 	font-size: 1rem;
 	line-height: 1.72;
 	color: #c9c9cf;
@@ -137,6 +152,9 @@ header button {
 }
 
 .sl-markdown-content h2 {
+	display: block;
+	width: 100%;
+	max-width: none;
 	font-size: clamp(1.65rem, 3vw, 2.1rem);
 	line-height: 1.15;
 	margin-top: 3.2rem;
