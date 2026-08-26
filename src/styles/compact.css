@@ -1,0 +1,80 @@
+/* Compact article rhythm layered on top of the Pinchana dark theme. */
+
+/* Starlight splits a page into a title panel and an article panel. Keep both
+   comfortable, but remove the large default vertical gutters. */
+.main-pane > .content-panel:has(h1) {
+	padding-block: 1.65rem 1.35rem;
+}
+
+.main-pane > .content-panel:has(.sl-markdown-content) {
+	padding-block: 1.25rem 2rem;
+}
+
+.sl-markdown-content {
+	line-height: 1.58;
+}
+
+/* Paragraph/list rhythm */
+.sl-markdown-content p {
+	margin-block: 0.62rem;
+}
+
+.sl-markdown-content ul,
+.sl-markdown-content ol {
+	margin-block: 0.72rem;
+}
+
+.sl-markdown-content li + li {
+	margin-top: 0.24rem;
+}
+
+/* Section rhythm */
+.sl-markdown-content h2 {
+	margin-top: 2.15rem;
+	margin-bottom: 0.72rem;
+	padding-bottom: 0.42rem;
+}
+
+.sl-markdown-content h3 {
+	margin-top: 1.65rem;
+	margin-bottom: 0.55rem;
+}
+
+.sl-markdown-content h4 {
+	margin-top: 1.35rem;
+	margin-bottom: 0.45rem;
+}
+
+/* Dense content should not re-introduce giant gaps. */
+.sl-markdown-content table:not(:where(.not-content *)) {
+	margin-block: 1.05rem 1.4rem;
+}
+
+.sl-markdown-content pre,
+.sl-markdown-content .expressive-code,
+.sl-markdown-content .starlight-aside,
+.sl-markdown-content blockquote {
+	margin-block: 0.9rem;
+}
+
+.sl-markdown-content hr {
+	margin-block: 1.8rem;
+}
+
+@media (max-width: 50rem) {
+	.main-pane > .content-panel:has(h1) {
+		padding-block: 1.25rem 1rem;
+	}
+
+	.main-pane > .content-panel:has(.sl-markdown-content) {
+		padding-block: 1rem 1.5rem;
+	}
+
+	.sl-markdown-content {
+		line-height: 1.54;
+	}
+
+	.sl-markdown-content h2 {
+		margin-top: 1.8rem;
+	}
+}
