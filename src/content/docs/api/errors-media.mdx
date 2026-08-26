@@ -1,62 +1,85 @@
 ---
 title: Errors and media lifecycle
-description: Status codes, cache semantics, authenticated media URLs, and range requests.
+description: API v1 errors, authentication failures, upstream/module failures, protected media, cache lifetime, and browser/DLP file behavior.
 ---
 
-## API v1 error codes
+API v1 uses one stable error envelope:
 
-Versioned scrape routes return `{"error":{"code":"...","message":"...","details":null}}`. Clients should branch on the stable code rather than matching the message.
+```json
+{
+  "error": {
+    "code": "unsupported_url",
+    "message": "Human-readable explanation",
+    "details": null
+  }
+}
+```
 
-| Code | Meaning | Client action |
-| --- | --- | --- |
-| `unsupported_url` | No configured module matches the URL | Check the complete URL and the operator's route patterns |
-| `invalid_url` | The URL is malformed or rejected by the selected module | Ask for a complete supported post URL |
-| `unauthorized` | The API key or Web session is absent or invalid | Restore the appropriate credential; do not retry anonymously |
-| `forbidden` | The authenticated caller is not permitted | Stop and inspect the relevant authentication boundary |
-| `authentication_required` | The upstream post requires an account or audience confirmation | Explain that anonymous extraction is unavailable |
-| `restricted_media` | The platform confirms that the media is restricted | Do not perform repeated retries or VPN rotations |
-| `not_found` | The source post or requested resource no longer exists | Ask for a valid existing URL |
-| `rate_limited` | The upstream platform is limiting requests | Apply bounded backoff; do not create an unbounded retry loop |
-| `extraction_failed` | The selected scraper could not extract the current upstream response | Record diagnostics and retry only when operational policy allows |
-| `invalid_upstream_response` | A module returned data that the gateway could not normalize | Inspect gateway and module logs |
-| `service_unavailable` | A required module or service is unavailable | Check aggregate health before retrying |
-| `internal_error` | The scraper failed unexpectedly | Record the request identifier and inspect server logs |
+Clients should branch on `error.code`, not parse `message`. `details` may be `null` or contain structured context. New clients should also tolerate error codes added by future modules.
 
-Instagram and TikTok use at most one VPN rotation and one retry for confirmed blocking signals. Login-gated, removed, and ordinary anonymous misses do not receive repeated rotations.
+## Common failure classes
 
-## HTTP status codes
+### Request and routing errors
 
-| Status | Typical cause |
-| ---: | --- |
-| 200 | Scrape, health, session, admin, or file request succeeded |
-| 206 | A normal or DLP media endpoint satisfied a byte-range request |
-| 400 | No module matches the URL; invalid custom-instance or Web BFF input |
-| 401 | Missing/invalid machine key or browser bearer session |
-| 403 | Turnstile verification failed |
-| 404 | Cached file, module name, or safe path not found |
-| 409 | DLP replay, invalid state transition, or file requested before ready |
-| 410 | DLP worker key or job expired |
-| 413 | DLP request body or cookie envelope exceeded its configured limit |
-| 416 | Requested media byte range is not satisfiable |
-| 422 | FastAPI/Pydantic request validation failure |
-| 429 | A module or upstream platform is rate-limiting work |
-| 500 | Unexpected VPN rotation or module failure |
-| 501 | Dynamic container mode is disabled for a start/stop request |
-| 502 | The Web BFF received an invalid verification response |
-| 503 | Module, verification service, gateway client, VPN, auth configuration, identity, or aggregate health unavailable |
+A malformed URL, unsupported host/path, or URL that does not match an enabled module fails before a scraper result is returned. `unsupported_url` is a typical routing error code.
 
-Legacy and non-versioned FastAPI errors may use `{"detail": ...}`. The official Web back end for front end maps failures to controlled `{"error":"..."}` messages and hides most server-side detail for 5xx errors.
+### Not found or unavailable content
 
-## Cache lifecycle
+A platform can report that a post, track, or account-bound asset no longer exists or cannot be resolved. `not_found` is the canonical class for content that the module can confidently identify as absent.
 
-Each module downloads media into `CACHE_PATH/{post_id}/` and writes `metadata.json` only after a successful result. Concurrent requests for the same key share one in-flight task. Partial directories without metadata are removed before retry. `CACHE_MAX_SIZE_GB` controls a shared size ceiling; before writing, the oldest post directory by file modification time is removed until enough space exists.
+Do not treat every upstream parsing failure as `not_found`: modules can fall back or surface a service/upstream failure when the content's existence is uncertain.
 
-The Compose volume `scraper-cache` is shared by the gateway and modules, so a returned relative URL resolves to the gateway's local file. Eviction, operator cleanup, volume replacement, or a missing/incomplete download turns an old URL into `404`.
+### Authentication errors
 
-## Delivery and range requests
+Machine routes reject missing/invalid `X-API-Key` values. Browser routes reject missing, invalid, or expired signed web-session bearer tokens. Those mechanisms are intentionally separate.
 
-Machine clients must include `X-API-Key` on every media fetch. Browser clients use `/web/media/...` with a bearer session; the Next.js route exposes it as `/api/media/...`, forwards the incoming `Range` header, streams the body, and copies `Accept-Ranges`, content range/length/type/disposition, ETag, and last-modified headers. Its response is `Cache-Control: private, no-store`.
+### Upstream, restriction, and rate failures
 
-Do not publish authenticated cache URLs, assume they are permanent, or strip path components. Re-run `/v1/scrape` when media has been evicted.
+Platforms can throttle, geo-restrict, require authentication, change response formats, or return temporary service errors. A module may retry or use a documented fallback, but clients should still be prepared for retriable service/rate conditions.
 
-DLP files are separate temporary artifacts rather than members of `scraper-cache`. They remain owner-bound to one signed browser session, are served with `no-store`, accept range requests while ready, and disappear when the job expires. Re-submit the source URL to create a new job; a normal `/scrape` cannot restore a DLP file.
+The human message is for diagnostics; application behavior should use the status and error code.
+
+## Protected media URLs
+
+A successful scrape does not make cached media public.
+
+- Machine `/v1/scrape` responses can contain protected `/media/...` paths. Fetch them with the same machine-key boundary.
+- Browser `/v1/web/scrape` responses use protected `/web/media/...` paths. Pinchana Web rewrites them to same-origin `/api/media/...` and its BFF forwards the browser session.
+
+Both media paths support the range behavior required for video/audio playback and resumable requests where the underlying file supports it.
+
+## Media dimensions
+
+The gateway probes cached image/video files to populate `dimensions: {width, height}`. A visual asset can legitimately have `dimensions: null` when the file cannot be inspected. Audio assets have no visual dimensions.
+
+Clients must not infer an error from missing dimensions.
+
+## Cache lifetime
+
+The shared scraper cache is working storage, not permanent object storage. Modules write files into the shared `scraper-cache` volume and the gateway serves them while present. Cache cleanup can remove old assets according to configured size/lifecycle behavior.
+
+If an integration needs durable storage, copy the authenticated asset into storage you control rather than retaining a Pinchana cache URL indefinitely.
+
+## Browser GIF conversion
+
+`POST /web/convert/gif` operates only on an authenticated file already present in the Pinchana cache. It has bounded FFmpeg limits and does not accept arbitrary remote URLs or uploads.
+
+That means a stale/removed cache asset cannot be converted later simply by replaying its old path.
+
+## DLP completed files
+
+DLP output is separate from the normal scraper cache. Each job gets temporary host storage and an ephemeral worker. Completed files are streamed through the owner-bound DLP route, and job directories expire according to DLP retention settings.
+
+Production defaults use a two-hour job lifetime. DLP storage is intentionally temporary and should not be backed up or synchronized.
+
+## Debugging order
+
+For a failed normal scrape:
+
+1. Confirm the request reached the gateway and authenticated successfully.
+2. Confirm the URL matches an enabled module.
+3. Inspect gateway/module logs without logging secrets or cookies.
+4. Check VPN/Gluetun health if the module depends on current egress.
+5. If scrape succeeds but file access fails, inspect the shared cache and media authentication separately.
+
+For a failed YouTube DLP job, use the DLP operations/preflight path instead of debugging it as a scraper module.

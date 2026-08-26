@@ -1,70 +1,77 @@
 ---
 title: Custom API instances
-description: Origin-bound Ed25519 certificates, validation, cookies, expiry, issuance, and trust limits.
+description: Project-issued Ed25519 instance certificates, origin validation, Turnstile binding, installation, renewal, and trust limits.
 ---
 
-import { Steps, Aside } from '@astrojs/starlight/components';
+The official Pinchana Web client accepts a custom API only when the exact origin has a valid, unexpired Ed25519 certificate issued by the Pinchana project.
 
-The official Web app accepts a custom origin only when the Pinchana project has issued an unexpired Ed25519 certificate for that exact origin. This prevents the settings field from becoming an arbitrary server-side request proxy.
+This is a security boundary, not a cosmetic verification badge. Without it, the Web server's same-origin `/api/...` routes could be pointed at arbitrary user-supplied servers.
 
-## Certificate envelope and claims
+## Certificate envelope
 
-The API returns this public envelope from `GET /web/identity`:
+An approved API publishes the public envelope from `GET /web/identity`:
 
 ```json
-{"payload":"BASE64URL_JSON_CLAIMS","signature":"BASE64URL_ED25519_SIGNATURE"}
+{
+  "payload": "BASE64URL_JSON_CLAIMS",
+  "signature": "BASE64URL_ED25519_SIGNATURE"
+}
 ```
 
-Decoded claims must contain:
+The certificate binds:
 
-| Claim | Requirement |
-| --- | --- |
-| `issuer` | exactly `pinchana-project` |
-| `protocol` | exactly `1` |
-| `origin` | exact normalized API origin |
-| `turnstile_site_key` | non-empty public widget key for this Web hostname |
-| `issued_at` | Unix seconds; no more than five minutes in the future |
-| `expires_at` | Unix seconds; must be in the future |
+- issuer and certificate protocol version;
+- the exact normalized API origin;
+- the public Cloudflare Turnstile site key used by the Web hostname;
+- issue time;
+- expiry time.
 
-Production origins must use HTTPS and contain no credentials, path, query, or fragment. Development permits HTTP. The Web deployment pins the project public key in server-only `PINCHANA_INSTANCE_PUBLIC_KEY` and verifies Ed25519 over the raw payload bytes.
+Production custom origins must use HTTPS and must not include credentials, paths, query strings, or fragments. Local development can permit HTTP origins.
 
-<Steps>
-1. A user enters an origin in Settings.
-2. Browser code fetches `${origin}/web/identity` with CORS.
-3. It posts the origin and envelope to same-origin `POST /api/instance`.
-4. The BFF verifies signature, claims, exact origin, and time bounds.
-5. It stores `payload.signature` in the HttpOnly `pinchana_instance` cookie until certificate expiry, clears the old session, and starts Turnstile with the certified site key.
-</Steps>
+## Connection flow
 
-## Operator setup
+1. The user enters an API origin in Web Settings.
+2. Browser code fetches that origin's `/web/identity` public envelope.
+3. The origin and envelope are submitted to same-origin `POST /api/instance`.
+4. The Web server verifies the Ed25519 signature with server-only `PINCHANA_INSTANCE_PUBLIC_KEY` and validates the claims, exact origin, and time bounds.
+5. The certificate is stored in the HttpOnly `pinchana_instance` cookie until its expiry.
+6. The previous Web session is cleared.
+7. Turnstile and future API calls use the certified origin/site-key pair.
 
-After approval, an operator receives the one-line envelope—not the signing key. For the standard Docker Compose deployment, copy the envelope into the API repository's `.env` and quote the complete JSON value:
+The custom API URL is not persisted as an arbitrary local-storage string. Server-side code derives the trusted origin from the verified certificate.
 
-```ini
+## API operator installation
+
+Instance operators receive the certificate envelope, never the project signing key. The simplest Compose configuration is a quoted one-line JSON value:
+
+```dotenv
 PINCHANA_INSTANCE_CERTIFICATE='{"payload":"BASE64URL_CLAIMS","signature":"BASE64URL_SIGNATURE"}'
 PINCHANA_INSTANCE_CERTIFICATE_FILE=
 ```
 
-The API deployment also needs the private Turnstile secret matching the **public site key embedded in the certificate**, plus the Web hostname and action:
+The same API deployment needs its private Turnstile configuration:
 
-```ini
+```dotenv
 TURNSTILE_SECRET_KEY=REPLACE_WITH_PRIVATE_TURNSTILE_SECRET
 TURNSTILE_EXPECTED_HOSTNAME=pinchana.example.com
 TURNSTILE_EXPECTED_ACTION=turnstile-spin-v1
 TURNSTILE_SESSION_SECRET=REPLACE_WITH_AT_LEAST_32_RANDOM_CHARACTERS
 ```
 
-Apply and verify the configuration through the final public HTTPS origin:
+The certificate contains the public Turnstile **site key**. It must never contain the private Siteverify secret.
+
+Recreate the gateway and verify the public identity through the final HTTPS origin:
 
 ```sh
 docker compose --env-file .env up --detach --force-recreate server
-curl --fail-with-body --silent --show-error \
-  https://api.example.com/web/identity
+curl --fail-with-body --silent --show-error https://api.example.com/web/identity
 ```
 
-The response must contain the installed `payload` and `signature`. A `503` means the certificate was not available inside the server container. The API's `/web/identity` response is public, cached for five minutes, and allows all origins because the certificate is already public and cryptographically verified.
+A `503` means no certificate source reached the running `server` container.
 
-To use a file instead, mount it read-only into the `server` container and set `PINCHANA_INSTANCE_CERTIFICATE_FILE` to the **container path**. Leave the inline variable empty:
+## File-based certificate
+
+For secret-management systems that prefer files, mount the public envelope read-only and set its **container path**:
 
 ```yaml
 services:
@@ -75,27 +82,26 @@ services:
       PINCHANA_INSTANCE_CERTIFICATE_FILE: /run/secrets/pinchana-instance-certificate.json
 ```
 
-The inline value takes precedence when both sources are configured.
+Leave `PINCHANA_INSTANCE_CERTIFICATE` empty when using the file. The inline value takes precedence when both are set.
 
-## Maintainer issuance
+## Issuance and renewal
 
-The private Ed25519 key stays offline and outside every repository and deployment. A maintainer can generate a key pair and use the API repository's signing script after reviewing an operator:
+The Ed25519 private key stays offline, outside all public repositories and normal API hosts. Maintainers can use the API repository's signing tool after reviewing an instance:
 
 ```sh
-openssl genpkey -algorithm Ed25519 -out /secure/pinchana-instance-private.pem
-openssl pkey -in /secure/pinchana-instance-private.pem -pubout -out pinchana-instance-public.pem
-
 node scripts/sign-instance-certificate.mjs \
   /secure/pinchana-instance-private.pem \
   https://api.example.com \
-  REPLACE_WITH_TURNSTILE_SITE_KEY \
+  REPLACE_WITH_PUBLIC_TURNSTILE_SITE_KEY \
   90
 ```
 
-The command prints the one-line envelope to standard output. Its second argument is the exact final HTTPS API origin, with no path, query, credentials, or fragment. Its third argument is the public Turnstile site key for the Web hostname—not the private Siteverify secret. Validity may be 1 through 366 days.
+The final argument is validity in days. The signing tool supports 1 through 366 days.
 
-Issue and install a replacement before `expires_at`, then recreate the API `server` container. Once an old certificate expires, the Web app rejects it and users must select the instance again after renewal.
+Issue a replacement before expiry, replace the installed envelope, and recreate `server`. Expired certificates are rejected; users must select the renewed instance again.
 
-<Aside type="caution" title="Trust boundary">
-The certificate proves project authorization of an origin and Turnstile configuration at issuance. It prevents copied certificates from working on another origin. It does **not** continuously prove that a third-party host runs unmodified code; that requires hardware-backed remote attestation. Use short validity periods and refuse renewal when trust changes.
-</Aside>
+## What the certificate proves
+
+It proves that the Pinchana project authorized a specific API origin and Turnstile configuration when the certificate was issued. It prevents a copied certificate from being valid on a different origin.
+
+It does **not** continuously prove that a third-party host still runs unmodified public code. Continuous software-state guarantees would require hardware-backed measured boot/remote attestation. Keep certificates short-lived and refuse renewal when an operator is no longer trusted.

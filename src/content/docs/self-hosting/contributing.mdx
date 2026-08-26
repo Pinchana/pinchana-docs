@@ -1,37 +1,85 @@
 ---
 title: Contributing
-description: Repository scope, conventions, verification, and release expectations.
+description: Contribute to the public Pinchana API, Pinchana Web, or documentation repositories safely and coherently.
 ---
 
-Contributions belong in the repository that owns the behavior:
+Public contributions in this documentation scope belong to:
 
-- [Pinchana API](https://github.com/Pinchana/pinchana-api) for the gateway, shared core, scraper services, Compose, and operations.
-- [Pinchana DLP](https://github.com/Pinchana/pinchana-dlp) for private-download protocol, orchestration, and ephemeral workers; publish its commit before updating the API submodule pointer.
-- [Pinchana Web](https://github.com/Pinchana/pinchana-web) for the browser interface, BFF routes, FFmpeg pipeline, and legal pages.
-- [Pinchana Docs](https://github.com/Pinchana/pinchana-docs) for this Starlight site. Documentation must follow shipped behavior in the owning repository.
+- `Pinchana/pinchana-api` and its public submodules;
+- `Pinchana/pinchana-web`;
+- `Pinchana/pinchana-docs`.
 
-Interface and legal translations use JSON pull requests in Pinchana Web. Follow the dedicated [translation guide](/translating/) instead of introducing a translation service or editing generated runtime messages.
+Private or closed-source clients are intentionally outside this documentation and contribution guide.
 
-Clone API submodules recursively. Before editing or publishing a submodule, confirm its current branch and parent pointer:
+## API contributions
+
+Clone the parent repository with submodules and make service code changes inside the owning submodule.
 
 ```sh
-cd pinchana-api
-git status --short --branch
-git submodule status
-git submodule foreach 'git status --short --branch'
+git clone --recurse-submodules https://github.com/Pinchana/pinchana-api.git
 ```
 
-For a published submodule change, commit and push the submodule on `main` first. Then return to the API root, verify the recorded commit, commit the updated pointer, and publish the parent repository. Do not leave the parent pointing to an unpublished or feature-branch-only commit.
+Run that submodule's tests/checks, then commit and push the submodule before updating its parent pointer. A parent PR must not point at a commit unavailable from the submodule's public remote.
 
-## Expectations
+When changing a module's URL coverage, runtime port, environment, image, or networking, update every coordinated parent location (`config/modules.yaml`, Compose, `.env.example`, workflow mappings, and docs) in the same change set.
 
-- Keep API code Python 3.13+, async for network I/O, and package names aligned with `pinchana_<name>`.
-- Keep secrets, cookies, generated caches, `__pycache__`, and private certificates out of commits.
-- Preserve the unified request/response contract and authenticated media routes.
-- Keep browser API origins, signed sessions, private keys, and machine credentials server-side.
-- Update `.env.example`, Compose, module config, workflow mapping, and documentation together when adding configuration or a service.
-- Use short imperative or conventional commit subjects such as `fix: ...` and `feat: ...`.
+Keep API v1 normalized. New platform fields should not automatically become top-level public schema additions if they can be represented by the existing source/content/author/media/music/engagement/safety/link model.
 
-API verification is module-specific: run available pytest suites, import checks, local health, and root-context Docker builds. DLP changes should run protocol/security tests and validate both the standalone build profile and integrated API profile. Web changes should pass `bun run test`, `bun run lint`, `bunx tsc --noEmit`, and `bun run build`, followed by focused manual browser testing when relevant; Playwright is not required. Documentation changes should pass `bun run check` and `bun run build` in `pinchana-docs`.
+## Web contributions
 
-Pull requests should identify affected services, runtime/config changes, security implications, and exact verification commands. Do not introduce behavior in docs that the current API or Web source does not implement.
+```sh
+git clone https://github.com/Pinchana/pinchana-web.git
+cd pinchana-web
+bun install --frozen-lockfile
+bun run test
+bun run lint
+bun run build
+```
+
+Preserve the server/client trust boundaries:
+
+- API origin and session bearer stay server-side;
+- no machine API key in browser code;
+- custom origins require verified project certificates;
+- Cookie Vault plaintext stays inside the browser/ephemeral worker boundary;
+- monitoring remains deployment-gated and performance telemetry opt-in;
+- authenticated media stays behind same-origin routes.
+
+Pinchana Web is `AGPL-3.0-only`; contributions are made under that repository's license.
+
+## Translation contributions
+
+Translation changes are ordinary PRs to `pinchana-web`. Do not modify the English `source` strings inside translated entries. Preserve ICU variables/tags exactly and edit only translated values unless the source English message itself is intentionally changing.
+
+See [Translation guide](/translating/).
+
+## Documentation contributions
+
+```sh
+git clone https://github.com/Pinchana/pinchana-docs.git
+cd pinchana-docs
+bun install --frozen-lockfile
+bun run check
+bun run build
+```
+
+Verify behavior from current API/Web implementation before writing commands/defaults. Avoid duplicating long configuration instructions across multiple pages; link to the canonical environment/operations reference.
+
+## Security-sensitive changes
+
+Do not put real secrets, cookies, user-submitted URLs from private reports, access/refresh tokens, rendered production Compose environments, or private keys into issues/PRs/tests/docs.
+
+For vulnerabilities that would expose credentials, bypass browser/custom-instance trust, escape DLP isolation, or permit arbitrary server-side requests/commands, use the project's private security-reporting path rather than publishing exploit details in a normal issue.
+
+## Pull request notes
+
+A useful PR description states:
+
+- affected project/service;
+- user-visible or API-contract impact;
+- configuration/deployment changes;
+- security/trust-boundary changes;
+- exact verification commands run;
+- whether live-platform testing was performed or intentionally skipped.
+
+For API parent PRs, also call out updated submodule pointers. For release-related changes, do not manually invent a tag/version workflow that conflicts with `scripts/version.py` and `scripts/publish_release.py`.

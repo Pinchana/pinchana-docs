@@ -1,42 +1,55 @@
 ---
 title: Web architecture and authentication
-description: The Next.js BFF, Turnstile page gate, same-origin proxy, and HttpOnly session flow.
+description: Next.js BFF routing, Turnstile verification, HttpOnly sessions, media proxying, and trust boundaries.
 ---
 
-import { Steps, Aside } from '@astrojs/starlight/components';
-
-Pinchana Web is a Next.js 16 server-backed application, not a static client for the API. Its route handlers form a backend-for-frontend (BFF): browser code calls only `/api/...` on the Web origin, while server code knows the selected API origin and holds signed sessions in HttpOnly cookies.
+Pinchana Web is a Next.js 16 server-backed application. Its route handlers form a backend-for-frontend (BFF): browser JavaScript talks only to the Web origin while the server-side routes communicate with the selected Pinchana API instance.
 
 ```text
-Browser                       Next.js BFF                         API
-  │ GET /api/session ────────────┼─ Bearer from HttpOnly cookie ──→ /web/session
-  │ Turnstile token              │
-  ├─ POST /api/verify ───────────┼────────────────────────────────→ /web/verify
-  │                Set-Cookie: pinchana_web_session (HttpOnly)
-  ├─ GET /api/build ─────────────┼────────────────────────────────→ /web/build
-  ├─ POST /api/scrape ───────────┼─ Bearer + JSON ────────────────→ /web/scrape
-  ├─ GET /api/media/... ─────────┼─ Bearer + Range ───────────────→ /web/media/...
-  └─ /api/dlp/jobs/... ──────────┼─ Bearer + job data/ranges ─────→ /web/dlp/jobs/...
+Browser                         Pinchana Web BFF                   Pinchana API
+   │ GET /api/instance ────────────────┼────────────────────────────→ instance configuration / identity
+   │ GET /api/session ─────────────────┼─ bearer from HttpOnly ─────→ GET /web/session
+   │ POST /api/verify + Turnstile ─────┼────────────────────────────→ POST /web/verify
+   │                                   ├─ Set-Cookie: web session
+   │ POST /api/scrape ─────────────────┼─ bearer + JSON ────────────→ POST /v1/web/scrape
+   │ GET /api/media/... ────────────────┼─ bearer + Range ───────────→ GET /web/media/...
+   │ GET /api/capabilities ────────────┼─ bearer ───────────────────→ GET /web/capabilities
+   └─ /api/dlp/jobs/... ───────────────┼─ bearer + job data ────────→ /web/dlp/jobs/...
 ```
 
-## Page-load gate
+The current Web client requires the normalized `POST /v1/web/scrape` API route. Older API instances that only expose legacy `/web/scrape` are not supported by current Web.
 
-<Steps>
-1. `GET /api/instance` resolves the default or verified custom origin and returns its public Turnstile site key.
-2. `GET /api/session` checks `pinchana_web_session`. A valid response unlocks the form; `401` shows the Turnstile challenge.
-3. The browser renders Turnstile explicitly with dark theme and action `turnstile-spin-v1`, then posts its one-use token to `/api/verify`.
-4. The BFF forwards the token to the selected API. On success it stores `access_token` in `pinchana_web_session` with `HttpOnly`, `SameSite=Strict`, path `/`, high priority, and `Secure` in production.
-5. Browser JavaScript receives only `{valid:true, expiresAt}`. The cookie value remains unreadable to it.
-</Steps>
+## Session gate
 
-The API URL is `PINCHANA_API_URL`, a server-only variable. There is no machine key in the Web app flow. The signed browser session, selected instance certificate, and API origin remain on server-side route handlers; only the Turnstile **site** key is public.
+1. `GET /api/instance` resolves the default API or a verified custom instance and returns browser-safe information such as the correct public Turnstile site key.
+2. `GET /api/session` checks the HttpOnly `pinchana_web_session` cookie by calling API `GET /web/session`.
+3. If no valid session exists, Web renders Turnstile with action `turnstile-spin-v1`.
+4. The one-use token is posted to `/api/verify`. The BFF forwards it to API `POST /web/verify`.
+5. API calls Cloudflare Siteverify with its private Turnstile secret and, on success, returns a signed browser-session token.
+6. Web stores that token in `pinchana_web_session` with `HttpOnly`, `SameSite=Strict`, path `/`, and `Secure` in production.
 
-## Same-origin proxying
+Browser JavaScript receives session status/expiry metadata, not the bearer token itself.
 
-`POST /api/scrape` validates a browser-supplied HTTP(S) URL, forwards to `/v1/web/scrape` with the signed bearer token, and recursively rewrites `/web/media/...` paths to `/api/media/...`. The media route rejects empty or dot path segments, URL-encodes each segment, forwards range requests, streams the response, and marks it private with `no-store` caching.
+## Server-only configuration
 
-`GET /api/build` fetches the API's public build manifest without forwarding deployment configuration and sanitizes it before About displays it. DLP proxy routes keep the same browser-session boundary, forward cookie ciphertext without decrypting it, and stream completed files with range metadata rather than buffering them.
+`PINCHANA_API_URL` is server-only. Do not turn it into a `NEXT_PUBLIC_...` value. The same rule applies to `PINCHANA_INSTANCE_PUBLIC_KEY`, API machine keys, Turnstile secrets, DLP secrets, and signed browser-session values.
 
-<Aside type="caution">
-Do not convert `PINCHANA_API_URL`, `PINCHANA_INSTANCE_PUBLIC_KEY`, API keys, Turnstile secrets, or browser session values into `NEXT_PUBLIC_...` variables. Only `NEXT_PUBLIC_TURNSTILE_SITE_KEY` is designed for browser delivery.
-</Aside>
+`NEXT_PUBLIC_TURNSTILE_SITE_KEY` is intentionally public because Cloudflare requires the browser to render the widget with a site key.
+
+## Same-origin scrape and media proxy
+
+`POST /api/scrape` validates the submitted URL, forwards the request to `/v1/web/scrape`, and rewrites protected `/web/media/...` paths in the normalized response to `/api/media/...`.
+
+The media route validates path segments, forwards byte-range headers, streams the upstream body, and prevents public caching. This is why authenticated media can be used directly by `<img>`, `<video>`, and `<audio>` without exposing the API session to browser code.
+
+## Build and capability metadata
+
+`GET /api/build` proxies the API's sanitized public build manifest for the About screen. It exposes product/module revisions, not deployment secrets.
+
+`GET /api/capabilities` feature-detects optional API capabilities. DLP controls are enabled only when the selected API reports protocol v2 as available.
+
+## Custom instances
+
+Custom origins are stored as project-signed certificate state, not arbitrary local-storage URLs. The BFF verifies the Ed25519 certificate using server-only `PINCHANA_INSTANCE_PUBLIC_KEY`, derives the exact API origin from certificate claims, and clears the current web session when the selected instance changes.
+
+See [Custom API instances](/web/custom-instances/) for certificate issuance and renewal.

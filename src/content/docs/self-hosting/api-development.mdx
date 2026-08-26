@@ -1,95 +1,100 @@
 ---
 title: API development
-description: Develop and test Pinchana's Python services and add scraper modules.
+description: Work with Pinchana API submodules, uv, development Compose, tests, Docker build contexts, and submodule pointers.
 ---
 
-import { Steps, Aside } from '@astrojs/starlight/components';
+Pinchana API development happens inside independent Git submodules. The parent `pinchana-api` repository is orchestration/configuration, not one root Python package.
 
-The API root is an orchestration repository. Each `pinchana-*` directory is an independent Python 3.13+ package with its own `pyproject.toml`, `uv.lock`, Dockerfile, and `src/pinchana_<name>/` package. Shared models, storage, music, Docker, plugin, and VPN code live in `pinchana-core`.
+## Clone correctly
 
-## Run one service
+```sh
+git clone --recurse-submodules https://github.com/Pinchana/pinchana-api.git
+cd pinchana-api
+```
 
-Work inside its package:
+If you already cloned without submodules:
+
+```sh
+git submodule sync --recursive
+git submodule update --init --recursive
+```
+
+## Work inside a service
+
+For a scraper or gateway package:
 
 ```sh
 cd pinchana-inst
 uv sync --frozen
-VPN_ENABLED=false uv run uvicorn pinchana_inst.main:app --reload --port 8082
-uv run python -c "import pinchana_inst; print('ok')"
+uv run uvicorn pinchana_inst.main:app --host 0.0.0.0 --port 8082 --reload
 ```
 
-Service ports are gateway 8080, TikTok 8081, Instagram 8082, Shorts 8083, SoundCloud 8084, YouTube Music 8085, Spotify 8086, Deezer 8087, Threads 8088, and Twitter 8089. Gluetun control is 8000.
+Other packages follow the same `pinchana_<name>.main:app` convention where they expose FastAPI.
 
-Build a service image from the **repository root** because Dockerfiles copy both core and target service:
+`pinchana-core` is a local path dependency used by services, so keep the parent/submodule checkout coherent when resolving locks or running tests.
+
+## Development Compose
+
+For integration testing across services without production VPN credentials:
 
 ```sh
-cd ..
-docker build --file pinchana-inst/Dockerfile --tag pinchana-inst:local .
-docker compose --env-file .env --file docker-compose.dev.yml up --detach --build
+docker compose --env-file .env -f docker-compose.dev.yml up --detach --build
 ```
+
+The development stack uses bridge networking, service DNS endpoints, direct ports, and `VPN_ENABLED=false`. It is intentionally different from production's shared Gluetun namespace.
 
 ## Tests
 
-Coverage is module-specific. Run a package's suite from that submodule so uv uses the correct lock and dependencies:
-
-```sh
-cd pinchana-inst
-uv run pytest -q
-PINCHANA_INST_LIVE=1 uv run pytest
-```
-
-Threads also contains pytest tests. Live tests contact external platforms and must be explicitly enabled/provided with their documented target; ordinary validation should prefer unit tests, imports, and local `/health` requests.
-
-The gateway and DLP have focused suites:
+Run tests from the submodule that owns them:
 
 ```sh
 cd pinchana-server
+uv sync --frozen
 uv run pytest -q
-
-cd ../pinchana-dlp
-uv run --with-requirements requirements-test.txt pytest -q
 ```
-
-## Develop DLP components
-
-The `pinchana-dlp` submodule has its own standalone Compose stack for protocol and worker development. It is not the same deployment as the API root's production `dlp` profile.
 
 ```sh
-cd pinchana-dlp
-cp example.env .env
-# Replace REDIS_PASSWORD, DLP_GATEWAY_TOKEN, WIREGUARD_PRIVATE_KEY,
-# and DLP_HOST_JOBS_DIR with real development values.
-docker compose --profile build build worker-image
-docker compose --env-file .env up --detach --build redis dlp-api vpn orchestrator
+cd pinchana-inst
+uv sync --frozen
+uv run pytest -q
 ```
 
-`worker-image` is assigned to the `build` profile because it is an image-only helper, not a long-running service. The `--profile build` option is needed for its build command but must not be used as if it were the integrated production profile. `./start.sh` performs the same two commands after checking that `.env` exists.
+Some scraper repositories have opt-in live tests controlled by repository-specific environment variables. Keep live test URLs/credentials outside source control.
 
-Use an absolute `DLP_HOST_JOBS_DIR`; the orchestrator passes that host path through Docker when it creates workers. The standalone stack calls the Redis secret `REDIS_PASSWORD`, while the integrated API stack calls it `DLP_REDIS_PASSWORD`.
+For a module without broad test coverage, at minimum validate its import/startup and the affected request path. Do not invent a root-wide formatter/linter command that the repository does not define.
 
-## Add a scraper module
+## Docker builds
 
-<Steps>
-1. Add a `pinchana-<name>` package/submodule with `src/pinchana_<name>/main.py`, a FastAPI `app`, `POST /scrape`, `GET /health`, Dockerfile, `pyproject.toml`, and `uv.lock`.
-2. Depend on `pinchana-core`, use `ScrapeRequest`/`ScrapeResponse`, store files beneath the shared cache, and return `/media/{platform}/{post_id}/{filename}` paths.
-3. Register URL patterns, port, endpoint, image tag, name, network, volume, and environment in `config/modules.yaml`.
-4. Add matching production and development Compose services. Production shares Gluetun's namespace; development exposes a direct port and uses its Compose DNS endpoint.
-5. Add every configurable port, endpoint, name, image, and module-specific option to `.env.example`.
-6. Extend `.github/workflows/docker-publish.yml` service detection and Dockerfile mapping, then document the platform/result behavior.
-</Steps>
-
-<Aside type="caution">
-Use async network I/O. Do not add root-level formatter/test commands that do not exist, expose scraper ports in production, or commit caches, `__pycache__`, cookies, or credentials.
-</Aside>
-
-## Trace gateway routing
-
-When a valid URL returns `400`, compare the client request with `config/modules.yaml` before changing the request body. A routing mismatch can produce `No module handles this URL` even when `{"url":"..."}` is valid.
+Build from the **parent repo root** because service Dockerfiles copy both the target submodule and `pinchana-core`:
 
 ```sh
-# Run from the pinchana-api repository root.
-docker compose --env-file .env --file docker-compose.dev.yml logs --tail=200 server \
-  | rg 'scrape_request|scrape_route_selected|scrape_rejected|scrape_forward|scrape_upstream_error'
+docker build -f pinchana-inst/Dockerfile -t pinchana-inst .
 ```
 
-Route patterns must remain aligned between `config/modules.yaml` and the module's own router registration. Threads must accept both `threads.net` and `threads.com`.
+Running `docker build .` from inside the submodule can omit required local path dependencies.
+
+## Adding or changing a module
+
+A new production module requires coordinated changes:
+
+1. Public `pinchana-<name>` repository/submodule with package and Dockerfile.
+2. Route patterns/container metadata in `config/modules.yaml`.
+3. Production and development Compose services/networking.
+4. `.env.example` image/port/endpoint/container variables.
+5. Docker publishing workflow detection/build mapping.
+6. Gateway schema/adapter changes only when the normalized v1 contract truly needs them.
+7. Documentation/platform matrix updates.
+
+Avoid leaking platform-specific response shapes into new clients; adapt module output into the shared API v1 schema.
+
+## Git submodule discipline
+
+Normal feature work:
+
+1. Commit and push the submodule change first.
+2. From the parent repository, stage the updated submodule pointer.
+3. Commit/push the parent pointer alongside any parent config changes.
+
+A parent commit must not point to an unreachable local-only submodule SHA.
+
+Version releases are different: the current `scripts/version.py` release flow automates version updates, submodule commits/pushes, parent pointer commit/push, and optional release publication. See [Operations and releases](/self-hosting/operations/) rather than manually reproducing the old version-bump sequence.

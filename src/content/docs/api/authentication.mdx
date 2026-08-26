@@ -1,45 +1,80 @@
 ---
-title: API authentication
-description: Named machine API keys and the X-API-Key header.
+title: Authentication
+description: Machine API keys, signed browser sessions, Turnstile, custom-instance certificates, and other client scopes.
 ---
 
-Machine routes use named, independently revocable keys from `PINCHANA_API_KEYS`. The value is a JSON object mapping a client name to a non-empty secret:
+Pinchana API uses separate authentication mechanisms for machine integrations and browser traffic. Do not reuse secrets across those boundaries.
 
-```ini
-PINCHANA_API_KEYS={"automation":"REPLACE_WITH_LONG_RANDOM_SECRET","ci":"REPLACE_WITH_ANOTHER_SECRET"}
+## Machine clients: `X-API-Key`
+
+Configure independently revocable keys with `PINCHANA_API_KEYS`, a JSON object whose values are the actual secrets:
+
+```dotenv
+PINCHANA_API_KEYS={"automation":"REPLACE_WITH_LONG_RANDOM_SECRET","backend":"REPLACE_WITH_DIFFERENT_SECRET"}
 ```
 
-Generate a 256-bit hexadecimal value for each client and keep the resulting JSON on one dotenv line:
-
-```sh
-printf 'PINCHANA_API_KEYS={"automation":"%s"}\n' "$(openssl rand -hex 32)"
-```
-
-To add another independently revocable client, generate another value and add another JSON property. Do not copy the same secret under multiple names. Compose accepts the JSON shown above directly in `.env`; malformed JSON or an array/string instead of an object disables configured machine authentication.
-
-Send only the secret value:
+Machine requests to the normal protected API use:
 
 ```http
-X-API-Key: REPLACE_WITH_LONG_RANDOM_SECRET
+X-API-Key: REPLACE_WITH_MACHINE_KEY
 ```
 
-The gateway compares configured values using constant-time comparison and logs the matching client name. Names are operational labels; they are not sent in the header.
+This applies to canonical `/v1/scrape`, legacy `/scrape`, protected `/media/...`, and administrative routes. Keep keys server-side; do not embed them in browser JavaScript or public mobile application bundles.
 
-## Protected machine routes
+## Browser clients: Turnstile + signed session
 
-- `POST /v1/scrape` (canonical)
-- `POST /scrape` (legacy compatibility)
-- `GET /media/{platform}/{post_id}/{filename}`
-- every `/admin/...` route
+Pinchana Web never receives a machine key. Its browser flow uses a separate signed web session:
 
-`GET /health`, the FastAPI schema UIs, and `GET /web/identity` are public. `/web/...` scrape and media routes use a separate signed bearer session created through Turnstile; machine keys are never accepted as a substitute there.
+1. Browser renders Cloudflare Turnstile with the public site key.
+2. Web forwards the one-use token to API `POST /web/verify`.
+3. API calls Cloudflare Siteverify using its private `TURNSTILE_SECRET_KEY`.
+4. API validates the expected Web hostname and action.
+5. API signs a short-lived browser session with `TURNSTILE_SESSION_SECRET`.
+6. Pinchana Web stores that bearer token in an HttpOnly cookie and forwards it only from server-side route handlers.
 
-## Failure behavior
+API-side configuration:
 
-| Situation | Status | Detail |
-| --- | ---: | --- |
-| Missing or unknown header | 401 | `Invalid or missing API key` |
-| Invalid `PINCHANA_API_KEYS` JSON/shape | 503 | `API authentication is not configured` |
-| Empty configuration | 401 | No key can match; configure at least one key before machine use |
+```dotenv
+TURNSTILE_SECRET_KEY=REPLACE_WITH_PRIVATE_TURNSTILE_SECRET
+TURNSTILE_EXPECTED_HOSTNAME=pinchana.example.com
+TURNSTILE_EXPECTED_ACTION=turnstile-spin-v1
+TURNSTILE_SESSION_SECRET=REPLACE_WITH_AT_LEAST_32_RANDOM_CHARACTERS
+TURNSTILE_SESSION_MAX_AGE=43200
+```
 
-Rotate a client by replacing only its value and recreating `server`. Remove the old value only after every intended client has switched. Never commit the JSON value, expose it as a `NEXT_PUBLIC_...` variable, place it in query parameters, print rendered Compose configuration into public logs, or use it directly from untrusted browser JavaScript.
+Sessions default to 12 hours and are capped by API validation. Web sessions and machine API keys are not interchangeable.
+
+Cloudflare's public test credentials can be used for development. The API still requires a successful Siteverify response; production site/secret pairs also enforce the configured hostname/action.
+
+## Browser media
+
+`POST /v1/web/scrape`, `/web/media/...`, `/web/capabilities`, GIF conversion, and `/web/dlp/...` use the signed browser-session bearer token.
+
+Pinchana Web hides this token in an HttpOnly cookie and proxies the routes through same-origin `/api/...` handlers. Browser media elements therefore do not need direct access to credentials.
+
+## Custom-instance certificate
+
+A custom API origin has a separate trust credential: a project-issued Ed25519 **instance certificate** published at `GET /web/identity`.
+
+The certificate is public and does not authenticate a scrape. It proves that the project approved an exact API origin and its public Turnstile site key. Pinchana Web verifies the signature using `PINCHANA_INSTANCE_PUBLIC_KEY` before it will send browser traffic to that origin.
+
+Never deploy the project certificate-signing private key to an API or Web server.
+
+## Mobile installation endpoints
+
+The gateway also contains optional scoped installation-session endpoints for native clients. These are separate from the Web flow and are not used by Pinchana Web. Current production Compose defaults to `MOBILE_AUTH_MODE=guest` with public mobile scrape/media/capability access not requiring a session unless `MOBILE_AUTH_REQUIRED=true`; private DLP ownership remains authenticated.
+
+If you operate those routes, use a dedicated `MOBILE_SESSION_SECRET`. Do not reuse a Turnstile, machine-key, or DLP secret.
+
+## Secret separation checklist
+
+Use independent random values for:
+
+- every machine API key;
+- `TURNSTILE_SESSION_SECRET`;
+- `MOBILE_SESSION_SECRET` when installation grants are enabled;
+- `DLP_GATEWAY_TOKEN`;
+- `DLP_OWNER_SECRET`;
+- `DLP_REDIS_PASSWORD`.
+
+Never log authorization headers, bearer/session tokens, refresh tokens, DLP cookie ciphertext/plaintext, or raw cookies.

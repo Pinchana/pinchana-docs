@@ -1,69 +1,38 @@
 ---
-title: Pinchana Docs
-description: Use, integrate, self-host, and contribute to Pinchana.
+title: Pinchana
+description: Official documentation for Pinchana API and Pinchana Web.
 template: splash
 hero:
-  tagline: Download supported social video, images, slideshows, and music—or build on the same API.
-  image:
-    file: ../../assets/cat.svg
+  tagline: A modular media extraction API with a privacy-conscious browser client.
   actions:
-    - text: Use Pinchana
-      link: https://pinchana.cc
-      icon: external
-    - text: Start with the docs
-      link: /start/overview/
+    - text: Use Pinchana Web
+      link: /start/web-interface/
       icon: right-arrow
     - text: API quickstart
       link: /api/quickstart/
-      icon: rocket
+      icon: external
       variant: minimal
 ---
 
-import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
-import FontAwesomeIcon from '../../components/FontAwesomeIcon.astro';
+Pinchana has two public product surfaces documented here:
 
-## One project, six entry points
+- **Pinchana API** is the FastAPI gateway and modular extraction stack. It routes supported URLs to independent scraper services, normalizes results into the versioned `/v1/scrape` contract, protects cached media, and exposes isolated browser-session and private-download flows.
+- **Pinchana Web** is the official Next.js browser client. Browser code talks only to same-origin `/api/...` routes; its server-side backend-for-frontend communicates with Pinchana API, stores signed browser sessions in HttpOnly cookies, and keeps machine credentials out of the browser.
 
-Pinchana is in **Preview**. Select the entry point that corresponds to the task. The browser interface is intended for users. The API, DLP, development, and deployment sections are intended for integrators and operators.
+The normal scrape pipeline currently covers TikTok, Instagram, YouTube Shorts, SoundCloud, YouTube Music, Spotify, Deezer, Threads, and Twitter/X. General YouTube and `youtu.be` downloads are handled separately by the optional browser-only **DLP protocol v2** stack when an API deployment advertises that capability.
 
-<CardGrid stagger>
-	<Card title="Download media">
-		<FontAwesomeIcon name="download" />
-		Learn the interface, supported platforms, download modes, and browser limitations.
-		<LinkCard title="Start here" href="/start/overview/" />
-	</Card>
-	<Card title="Build with the API">
-		<FontAwesomeIcon name="code" />
-		Authenticate machine requests and consume one response shape across every module.
-		<LinkCard title="API quickstart" href="/api/quickstart/" />
-	</Card>
-	<Card title="Understand the Web app">
-		<FontAwesomeIcon name="web" />
-		See how the Next.js BFF keeps origins, signed sessions, and machine credentials server-side.
-		<LinkCard title="Web architecture" href="/web/architecture-auth/" />
-	</Card>
-	<Card title="Run your own stack">
-		<FontAwesomeIcon name="server" />
-		Deploy the Docker Compose API, a server-backed Web app, and these static docs.
-		<LinkCard title="Self-hosting" href="/self-hosting/quickstart/" />
-	</Card>
-	<Card title="Operate private downloads">
-		<FontAwesomeIcon name="server" />
-		Review the DLP protocol, trust boundaries, image pinning, canaries, and rollback procedure.
-		<LinkCard title="DLP operations" href="/dlp/operations/" />
-	</Card>
-	<Card title="Translate the interface">
-		<FontAwesomeIcon name="code" />
-		Edit formal JSON catalogs and submit the result through a GitHub pull request.
-		<LinkCard title="Translation guide" href="/translating/" />
-	</Card>
-</CardGrid>
+## Public projects
 
-## Official services
+- [Pinchana API](https://github.com/Pinchana/pinchana-api) — MIT licensed orchestration repository with public scraper/DLP submodules.
+- [Pinchana Web](https://github.com/Pinchana/pinchana-web) — AGPL-3.0-only official browser interface.
+- [Pinchana Docs](https://github.com/Pinchana/pinchana-docs) — this documentation site.
 
-- Web application: [pinchana.cc](https://pinchana.cc)
-- Public API: [api.pinchana.cc](https://api.pinchana.cc)
-- Documentation: [docs.pinchana.cc](https://docs.pinchana.cc)
-- Pinchana BOT: [t.me/pinchanabot](https://t.me/pinchanabot)
+## Public origins
 
-Source is maintained in the [API](https://github.com/Pinchana/pinchana-api), [Web](https://github.com/Pinchana/pinchana-web), [DLP](https://github.com/Pinchana/pinchana-dlp), and [Docs](https://github.com/Pinchana/pinchana-docs) repositories.
+- Web: `https://pinchana.cc`
+- API: `https://api.pinchana.cc`
+- Docs: `https://docs.pinchana.cc`
+
+Self-hosters can run their own API and Web deployments. The official Web client accepts custom API origins only when the exact HTTPS origin has a valid, unexpired project-issued Ed25519 instance certificate.
+
+Start with [Using Pinchana Web](/start/web-interface/) if you just want to download media, or [API quickstart](/api/quickstart/) if you are integrating or self-hosting the gateway.

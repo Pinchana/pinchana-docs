@@ -1,47 +1,59 @@
 ---
 title: Downloads
-description: Individual saves, ZIP archives, autosave, browser-side audio conversion, and fallbacks.
+description: Normal media saves, audio conversion, ZIP archives, YouTube DLP, filenames, and Cookie Vault behavior.
 ---
 
-import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+Pinchana Web has two download paths: the normal scrape/media pipeline and the optional YouTube DLP pipeline.
 
-The Web server streams authenticated media from the API and the browser chooses where files are saved. Ordinary scraper results and YouTube DLP jobs take different paths so multi-gigabyte YouTube files do not need to fit in page memory.
+## Normal scrape downloads
 
-<Tabs>
-<TabItem label="Media">
+After a successful normal scrape, downloadable assets are exposed through authenticated same-origin `/api/media/...` URLs. Depending on the source, a result can contain:
 
-Pinchana saves `video_url` first, otherwise `audio_url`, otherwise `thumbnail_url`. For carousels it saves every video or image. A TikTok all-image slideshow also includes its separate audio file.
+- one video or image;
+- an image/video carousel;
+- audio tracks;
+- a cover image;
+- a slideshow soundtrack.
 
-</TabItem>
-<TabItem label="Audio only">
+The Web client derives an ordered download list from the normalized `data.media` array. If multiple files are present and **ZIP multiple files** is enabled, `client-zip` creates the archive in the browser. Otherwise each asset is saved separately.
 
-For ordinary scraper results, existing MP3 files pass through. Otherwise Pinchana loads a local FFmpeg WebAssembly engine (about 31 MB) and extracts the first audio stream as a quality-level-2 MP3. Conversion stays on the device.
+### Audio mode
 
-YouTube uses DLP instead. Its isolated worker downloads the selected audio stream and, when requested, converts it to MP3, OGG, WAV, or Opus with pinned server-side FFmpeg. Choosing **Best** preserves the source audio without conversion.
+For ordinary scrape results, Audio mode prefers existing audio assets. If only a video asset has audio, Pinchana Web can extract/convert it to MP3 in the browser with its locally bundled FFmpeg WebAssembly runtime. Existing MP3 audio does not need to be re-encoded.
 
-</TabItem>
-</Tabs>
+If a result has no usable audio stream, Web falls back to Media rather than creating an empty audio download.
 
-## YouTube downloads
+## YouTube DLP downloads
 
-YouTube and `youtu.be` links use the API instance's optional DLP capability. While the job runs, progress and the current stage replace the URL input; no empty media preview is created. A completed job restores the same bar dimensions with a download button, file size, and a large-file storage warning when applicable.
+When DLP protocol v2 is available, ordinary YouTube URLs use a job workflow instead of normal scrape media:
 
-The file is handed directly to the browser download manager through an authenticated same-origin URL. Full and resumed range requests still require the current HttpOnly Pinchana session. This avoids constructing a multi-gigabyte Blob in the page and lets the browser provide its normal progress, pause, and resume behavior.
+1. Web allocates a DLP job.
+2. The user-selected fixed options are submitted.
+3. An ephemeral worker downloads/processes the media.
+4. Web polls job state.
+5. The completed file is streamed through `/api/dlp/jobs/{jobId}/file` to the browser download manager.
 
-**Save immediately** starts the browser download as soon as a YouTube job is ready. The ready state and download button remain available until the temporary job expires, so the user can retry the handoff.
+This path supports advertised quality ceilings, H.264/AV1/VP9 or Auto codec preference, MP4/WebM/MKV or Auto containers, audio formats/bitrates, optional better-audio preference, dubbed-track preference, and embedded subtitle language when available. The API capability response determines which controls are actually enabled.
 
-## One file or many
+## Cookie Vault
 
-With **ZIP multiple files** enabled (the default), multiple carousel items or tracks are fetched and assembled with `client-zip`. Audio-only archives receive an `-audio.zip` suffix. If ZIP is disabled, Pinchana triggers one browser save per item; the browser may ask permission for multiple downloads.
+YouTube cookies are optional and never required for an anonymous DLP job. If a user explicitly selects a Cookie Vault profile, Web decrypts that profile locally, filters it for the submitted URL, and encrypts the cookie payload to the allocated worker's short-lived X25519 public key.
 
-For ordinary results, **Save immediately** is enabled by default. Media saves after a result arrives; audio-only saves after conversion finishes. The **Download** button remains available for another attempt.
+The Next.js proxy, gateway, Redis, and orchestrator do not receive plaintext cookie values. The worker decrypts cookies only into a RAM-backed runtime location for the job.
 
-Every generated name contains `[pinchana.cc]`, replaces unsafe characters, and stays within a conservative UTF-8 byte limit. Settings offers Classic, Basic, Pretty, and Nerdy styles; Pretty is the default. Available metadata determines the exact title, author, format, and source identifiers in each style.
+## Filenames
 
-## No-audio fallback
+All Pinchana-generated browser/DLP download names retain the `[pinchana.cc]` brand marker. Web currently offers four filename styles:
 
-If no audio item or video exists, or FFmpeg finds no usable audio stream, the app switches back to **Media** and shows an informational notification. Other conversion failures remain errors and do not silently replace the requested result.
+- Classic
+- Basic
+- Pretty (default)
+- Nerdy
 
-<Aside type="caution" title="Browser limits">
-Ordinary files, ZIPs, and local audio conversions still use browser Blobs and can consume substantial memory. YouTube DLP downloads avoid that Blob cost, but the device still needs enough free storage for the completed file. Private browsing, mobile storage policy, content blockers, autoplay rules, or disabled WebAssembly/workers can affect previews and ordinary conversion. Keep the tab open until preparation finishes.
-</Aside>
+Names are sanitized and constrained to a conservative UTF-8 byte length.
+
+Twitter/X animated posts remain efficient looping video assets by default at the API level. The Web setting **Convert Twitter GIFs** can request an explicit GIF conversion before saving.
+
+## Large files
+
+Normal browser Blob/ZIP operations need memory proportional to the data being processed. DLP final files instead stream through the same-origin route with range metadata so large completed downloads do not need to be held entirely in browser JavaScript memory.

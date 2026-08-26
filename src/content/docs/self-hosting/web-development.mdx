@@ -1,33 +1,70 @@
 ---
 title: Web development
-description: Bun workflow, FFmpeg asset synchronization, checks, environment, and source layout.
+description: Clone and run Pinchana Web locally, configure the server-only API origin, test Turnstile, and validate production behavior.
 ---
 
-Clone and configure the Web repository:
+For implementation details, see the dedicated [Web development](/web/development/) reference. This page focuses on getting a self-hosted development checkout running against a Pinchana API.
+
+## Clone and install
 
 ```sh
 git clone https://github.com/Pinchana/pinchana-web.git
 cd pinchana-web
-cp .env.example .env.local
 bun install --frozen-lockfile
+cp .env.example .env.local
+```
+
+Minimum local configuration:
+
+```dotenv
+PINCHANA_API_URL=http://127.0.0.1:8080
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=REPLACE_WITH_PUBLIC_SITE_KEY
+SENTRY_MONITORING_ENABLED=false
+```
+
+The API must separately have the corresponding Turnstile secret/session configuration. For local UI work, Cloudflare's documented test site/secret pair can be used.
+
+## Run
+
+```sh
 bun run dev
 ```
 
-The API must be running at `PINCHANA_API_URL`. For local verification, use Cloudflare's documented test site/secret pair: the public site key belongs in the Web environment and the matching private test secret belongs only in the API environment.
+Open `http://localhost:3000`.
 
-## Asset synchronization
+The development script synchronizes the local FFmpeg WebAssembly assets before starting Next.js.
 
-`bun install`, `bun run dev`, and `bun run build` automatically invoke `scripts/sync-ffmpeg-core.mjs`. It copies the FFmpeg core JavaScript, WASM, and worker entry into `public/ffmpeg/`. Do not hand-edit those generated files. Run `bun run sync:ffmpeg` to refresh them after dependency changes.
-
-## Validation
+## Validate
 
 ```sh
 bun run test
 bun run lint
-bunx tsc --noEmit
 bun run build
 ```
 
-The Bun suite covers focused filename, DLP download, and diagnostic behavior. Exercise the verification gate, URL submission, media range playback, both download modes, ZIP on/off, session expiry, and custom instance selection manually for changes that affect those paths. The project does not require Playwright.
+Test at least:
 
-See [Web development and configuration](/web/development/) for environment variables and the project map, and [Browser media pipeline](/web/media-pipeline/) for FFmpeg behavior.
+- session gate/Turnstile flow;
+- one normal scrape and authenticated media preview;
+- audio mode/normal downloads when touched by the change;
+- custom-instance validation when relevant;
+- DLP capability gating and a test job when relevant;
+- English/Ukrainian rendering for text changes.
+
+## Server/client boundary
+
+Keep `PINCHANA_API_URL` server-only. Browser components should use same-origin `/api/...` handlers. Never introduce a public machine API key to make local development easier.
+
+Only intentionally browser-visible values use `NEXT_PUBLIC_...`, such as the Turnstile site key and public build revision.
+
+## Custom instances
+
+`PINCHANA_INSTANCE_PUBLIC_KEY` is optional. Without it, the custom-instance connection form is disabled. Configure it only when testing project-issued certificate validation.
+
+Production custom origins require HTTPS; local development can use HTTP origins for development-only testing.
+
+## Docker parity
+
+The production Docker image builds and runs with Bun as a non-root `bun` user. Compose binds Web to `127.0.0.1:3000` by default and expects a reverse proxy for public TLS.
+
+Before shipping a change that only works under `next dev`, verify the production `bun run build` and, when deployment behavior changed, the repository Docker Compose build.

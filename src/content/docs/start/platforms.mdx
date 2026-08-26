@@ -1,31 +1,32 @@
 ---
 title: Supported platforms
-description: Supported URL families and the result users should expect from each Pinchana module.
+description: URL families handled by the normal scraper modules and by browser-only DLP.
 ---
 
-The gateway matches URL text against the configured module patterns. Public, accessible posts work best; “supported” does not guarantee that every item is available in every region or at every moment.
+Pinchana API routes normal scrape requests by matching URL patterns in `config/modules.yaml`. Nine scraper modules are enabled in the current stack.
 
-| Platform | Recognized URL families | Typical result |
+| Platform | Accepted URL families | Notes |
 | --- | --- | --- |
-| TikTok | `tiktok.com`, `vm.tiktok.com`, `vt.tiktok.com` | Video, or an image slideshow/carousel with a separate audio file when available |
-| Instagram | `instagram.com`, `instagr.am` | Post/Reel video, image, or mixed carousel |
-| YouTube | `youtube.com`, its subdomains, and `youtu.be` | Official Web uses optional DLP for video/audio formats, subtitles, large downloads, and explicit cookie profiles |
-| YouTube Shorts | `youtube.com/shorts`, including `www` and mobile hosts | Machine API uses the Shorts module; official Web routes the URL through YouTube DLP |
-| SoundCloud | `soundcloud.com`, `on.soundcloud.com` | MP3 audio, title/artist, duration, and cover when available |
-| YouTube Music | `music.youtube.com` | Machine API uses the music module; official Web locks Audio only and uses DLP output options |
-| Spotify | `open.spotify.com` | Audio metadata and downloaded MP3; requires configured Spotify API credentials on the instance |
-| Deezer | `deezer.com`, `deezer.page.link`, `link.deezer.com` | Audio metadata and downloaded MP3 |
-| Threads | `threads.net`, `threads.com` | Image, video, carousel, or text-only metadata |
-| Twitter / X | `x.com`, `twitter.com`, `vxtwitter.com`, `fxtwitter.com` | Image, video, looping GIF-style video, carousel, or text-only metadata |
+| TikTok | `tiktok.com`, `vm.tiktok.com`, `vt.tiktok.com` | Video and photo/slideshow posts are handled by the TikTok module. |
+| Instagram | `instagram.com`, `instagr.am` | Public Instagram post/reel URLs are handled by the Instagram module. |
+| YouTube Shorts | `youtube.com/shorts/...` | The normal scraper module is specifically for Shorts URLs. |
+| SoundCloud | `soundcloud.com`, `on.soundcloud.com` | Music results are treated as audio-first in Web. |
+| YouTube Music | `music.youtube.com` | Audio/music extraction through the normal module pipeline. |
+| Spotify | `open.spotify.com` | The API deployment needs Spotify client credentials. |
+| Deezer | `deezer.com`, `deezer.page.link`, `link.deezer.com` | Audio/music extraction and short-link routing. |
+| Threads | `threads.net`, `threads.com` | Canonical post URLs and current Threads share-link resolution are supported. |
+| Twitter / X | `x.com`, `twitter.com`, `vxtwitter.com`, `fxtwitter.com` | Includes fallback handling when the primary X payload is incomplete. |
 
-## API v1 result shapes
+## General YouTube URLs
 
-- **Single video:** one `content` video asset with an optional `preview_url` and measured dimensions.
-- **Single image:** one `content` image asset.
-- **Carousel:** multiple `content` assets ordered by `index`.
-- **TikTok slideshow:** ordered image assets plus a `soundtrack` audio asset when available.
-- **Looping media:** a video asset with `looping: true`. The Web app may convert this Twitter/X media to GIF according to the user's setting.
-- **Music:** one or more audio assets, optional cover assets, and title, artist, duration, or album metadata when supplied.
-- **Text-only post:** content and author metadata with an empty media array.
+`youtube.com/watch`, `youtu.be/...`, and other ordinary YouTube URLs are **not** sent to the `shorts` module by Pinchana Web. When the selected API advertises DLP protocol v2, Web uses the asynchronous DLP workflow instead.
 
-Threads uses an HTTP-first extraction path and a pooled browser fallback for gated or incomplete pages. Threads music may add a 30-second soundtrack preview and cover. A platform may remove media, require authentication, rate-limit the scraper, or return an unsupported upstream response. These conditions are distinct [API v1 errors](/api/errors-media/#api-v1-error-codes).
+DLP is intentionally separate because it has a different security and resource model: per-job workers, bounded quality/codec/container choices, optional browser-encrypted cookies, and streamed output files.
+
+If DLP is unavailable, the Web client should not pretend that ordinary YouTube URLs are supported through the Shorts module.
+
+## Routing rules
+
+The gateway requires a complete HTTP(S) URL and chooses the first enabled module whose configured pattern matches. New integrations should send all normal scrape URLs to `POST /v1/scrape` rather than calling scraper service ports directly.
+
+Self-hosters can change enabled modules and endpoint metadata in `config/modules.yaml`, but production Compose still expects the corresponding container, port, image, environment variables, and release workflow mapping to remain consistent.

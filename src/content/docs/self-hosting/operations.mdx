@@ -1,82 +1,161 @@
 ---
-title: Operations
-description: Health, logs, cache persistence, VPN rotation, firewalling, updates, releases, and rollback.
+title: Operations and releases
+description: Production updates, health, VPN recreation, coherent image pins, CalVer release tooling, GitHub Releases, and tag policy.
 ---
 
-import { Aside, Steps } from '@astrojs/starlight/components';
+Production operation has two separate jobs: **deploy released images safely** and **publish new releases correctly**.
 
-## Routine checks
+## Production updates
+
+The supported production update path is the rolling updater, not ad-hoc `docker compose pull` across mutable tags.
+
+Preview the next coherent API release:
 
 ```sh
-cd pinchana-api
+python scripts/update_rolling.py --env-file .env --dry-run
+```
+
+Apply it:
+
+```sh
+python scripts/update_rolling.py --env-file .env
+```
+
+The updater discovers the newest coherent CalVer release through the configured `stable` repositories, verifies that all selected services report the same product release, pulls their exact release tags, and atomically writes immutable image digests to `.env` only after every selected image resolves successfully.
+
+DLP image variables are untouched unless explicitly included:
+
+```sh
+python scripts/update_rolling.py --env-file .env --dlp --dry-run
+python scripts/update_rolling.py --env-file .env --dlp
+```
+
+Then apply/recreate the stack as appropriate:
+
+```sh
+docker compose --env-file .env config --quiet
+docker compose --env-file .env up --detach
 docker compose --env-file .env ps
-docker compose --env-file .env logs --tail=100 server
-curl --fail-with-body --silent --show-error https://api.example.com/health
 ```
 
-`/health` checks every configured module and returns `503` when any one is unhealthy. Inspect that module and Gluetun together because module health verifies VPN state when `VPN_ENABLED=true`.
+## Health and logs
+
+Gateway health:
 
 ```sh
-docker compose --env-file .env logs --tail=100 gluetun shorts
-curl --fail-with-body --silent --show-error \
-  --header 'X-API-Key: REPLACE_WITH_ADMIN_KEY' \
-  https://api.example.com/admin/vpn/status
+curl --fail-with-body --silent --show-error http://127.0.0.1:8080/health
 ```
 
-## Cache and persistence
+Target logs rather than dumping the entire rendered configuration:
 
-The named `scraper-cache` volume holds downloaded files and metadata across container replacement. Monitor its disk usage and choose `CACHE_MAX_SIZE_GB` below the host's safe capacity. Eviction is size-based and removes the oldest post directory. Back up the volume only if cached, reproducible media warrants it; credentials and cookies should use separate protected files/secrets.
+```sh
+docker compose --env-file .env logs --tail=100 server
+docker compose --env-file .env logs --tail=100 threads twitter
+```
 
-DLP uses a separate host directory for temporary job output. It can require roughly twice `DLP_MAX_OUTPUT_BYTES` plus 512 MiB during video/audio merging, multiplied by active workers. Do not back up or synchronize it. Before removing expired directories, confirm no containers remain with `docker ps --filter label=pinchana.dlp.job`.
+Avoid logging credentials, cookie contents, authorization headers, DLP request bodies, or full rendered Compose environment.
 
-## VPN rotation
+## Gluetun recreation
 
-Use `POST /admin/vpn/rotate` for an in-process tunnel rotation. It has a 90-second cooldown and waits up to 60 seconds for a connected tunnel and public IP.
+Do not use:
 
-Never run `docker restart gluetun`: it can clear VPN credentials and lead to `AUTH_ERROR`. Recreate it through Compose:
+```sh
+docker restart gluetun
+```
+
+A raw restart can lose/reuse runtime state in ways that do not reapply the intended Compose environment and has caused VPN authentication problems. Recreate through Compose instead:
 
 ```sh
 docker compose --env-file .env up --detach --force-recreate gluetun
-docker compose --env-file .env up --detach
 ```
 
-Because every production service shares Gluetun's network namespace, recreating it may require dependent services to be recreated as well. Confirm `docker compose ps` and `/health` afterward.
+The normal scraper/gateway services share its network namespace, so plan a short interruption while it is recreated.
 
-## Firewall and reverse proxy
+## Product version
 
-Expose only HTTPS for the gateway through a TLS reverse proxy. Keep Gluetun control port 8000, scraper ports 8081–8089, Redis, DLP API, worker networks, and the orchestrator private. Ideally bind the API host port to loopback and let the proxy connect locally; otherwise enforce this with the host/cloud firewall. Preserve byte-range request/response headers, disable buffering where necessary, and choose upstream timeouts long enough for scrape and attachment streaming. Protect Docker socket access and leave `CONTAINER_MODE=false` unless dynamic lifecycle control is required.
+`VERSION` in the parent API repository is the product release source of truth and uses:
 
-Among the DLP services, only `dlp-orchestrator` should receive `/var/run/docker.sock`. DLP workers are created dynamically and will not appear as a normal Compose service. The DLP API must remain socket-free and resolve target hosts over DNS-over-HTTPS through `dlp-vpn`.
+```text
+YY.MM.ITERATION
+```
 
-The supplied base Compose file also mounts the socket into `server` for its optional dynamic scraper lifecycle manager, even when `CONTAINER_MODE=false`. A hardened deployment that never uses `/admin/modules/{name}/start` or `/stop` should remove that mount with a maintained Compose override. Merely setting `CONTAINER_MODE=false` disables the routes but does not remove the mounted socket.
+Examples within one month increment the final integer; the first release in a new month resets the iteration to 1. Python packages use the PEP 440 equivalent without zero-padded numeric segments (`26.08.7` → `26.8.7`).
 
-## DLP checks and rollback
+## Normal release
 
-Use the profile on inspection commands or Compose will hide its optional services:
+Run from a clean parent checkout with authenticated `git`, `uv`, and `gh`:
 
 ```sh
-docker compose --env-file .env --profile dlp ps
-docker compose --env-file .env --profile dlp logs --tail=100 \
-  dlp-redis dlp-vpn dlp-api dlp-orchestrator
-docker ps --filter label=pinchana.dlp.job
+python scripts/version.py bump --publish -n "Describe the release here"
 ```
 
-If the private-download path becomes unsafe or unreliable, set `DLP_ENABLED=false` and recreate only `server`. This removes the advertised browser capability without stopping normal scrapers or killing an active worker. Stop the profile only after active jobs finish or expire.
+For multiline notes:
 
-## Upgrades and rollback
+```sh
+python scripts/version.py bump --publish -F RELEASE_NOTES.md
+```
 
-<Steps>
-1. Record deployed tags and back up configuration plus any irreplaceable volume data.
-2. Select the intended immutable release tag and validate configuration: `docker compose --env-file .env config --quiet`.
-3. Run `docker compose --env-file .env pull` and `docker compose --env-file .env up --detach`.
-4. Verify Compose state, aggregate health, authenticated scrape, and a range media fetch.
-5. On failure, restore the previous image tags and run `docker compose --env-file .env up --detach` again. Do not delete the cache volume during rollback.
-</Steps>
+For an explicit version:
 
-Images use `ghcr.io/pinchana/pinchana-api/<service>:<tag>`. `main` publishes `latest`, `stable` publishes `stable`, and a release such as `v0.2.beta` publishes `0.2.beta` plus `stable`. Prefer an explicit release tag for repeatable production rollouts.
+```sh
+python scripts/version.py set YY.MM.N --publish -n "Release notes"
+```
 
-For DLP, run `scripts/update-dlp-image-pins.py --env-file .env` to resolve API, orchestrator, and worker images to digests, pull the explicitly pinned VPN image, and run the `infra` preflight before changing containers. Enable the capability only after canaries, then run the `enable` preflight.
+The current release tool performs the full version synchronization:
 
-<Aside type="caution">
-Compose image/tag changes are application upgrades; Gluetun and scraper behavior also depend on external platforms and VPN provider state. Roll back configuration and images together when their interfaces changed.
-</Aside>
+1. Requires clean parent/submodule worktrees.
+2. Synchronizes and initializes submodules.
+3. Fetches each submodule's remote default branch and safely advances stale parent pins; divergent history aborts.
+4. Updates parent `VERSION`, Python submodule `project.version`, and matching `uv.lock` files.
+5. Commits version metadata in affected submodules.
+6. Pushes submodule HEADs so every parent pointer is remotely reachable.
+7. Commits/pushes the parent `VERSION` and updated submodule pointers.
+8. With `--publish`, creates the matching annotated tag and delegates to `scripts/publish_release.py` to push it and create the GitHub Release through `gh`.
+
+Use `--local-only` only when you intentionally want the old metadata-only behavior without synchronization/commits/pushes:
+
+```sh
+python scripts/version.py bump --local-only
+```
+
+## Publish an existing local tag
+
+If the version commit is complete and the matching tag already exists locally on the current HEAD:
+
+```sh
+python scripts/publish_release.py -n "Describe the release here"
+```
+
+The publisher requires:
+
+- clean worktree;
+- submodules matching the parent pins;
+- `scripts/version.py check --tag v<VERSION>` to pass;
+- local tag to exist and resolve to current HEAD.
+
+It pushes the branch/tag and creates or updates the GitHub Release.
+
+`--retag` exists only to repair an **unpushed local tag** that was created before the final release commit. It refuses to move a tag already present on `origin`.
+
+Never force-move a published release tag as routine release practice. If an already-published release needs a correction, prefer a new patch iteration unless you have explicitly established that the remote tag produced no release artifacts and are intentionally repairing it.
+
+## Docker tag policy
+
+Official images use:
+
+```text
+ghcr.io/pinchana/pinchana-api/<service>:<tag>
+```
+
+- Push to `main` publishes the development snapshot channel `latest`.
+- Exact release tag `vYY.MM.N` publishes immutable `YY.MM.N`, rolling monthly `YY.MM`, and `stable`.
+- Release CI validates that the Git tag matches `VERSION`.
+- The legacy `stable` Git branch is not a release source.
+
+Production should discover through `stable` only via `update_rolling.py`, then persist immutable digests.
+
+## DLP rollout
+
+Do not combine an ordinary API update with an unplanned DLP enablement. DLP has its own preflight/canary sequence. Updating DLP image digests with `--dlp` is safe while `DLP_ENABLED=false`; advertising the capability is a separate operational decision.
+
+See [DLP operations and security](/dlp/operations/).

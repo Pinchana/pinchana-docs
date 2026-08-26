@@ -1,15 +1,19 @@
 ---
 title: Deploy the API
-description: Production Linux VPS deployment with Docker Compose, Gluetun, TLS, secrets, health checks, and updates.
+description: Production Pinchana API deployment with coherent image digests, Gluetun, browser authentication, reverse proxying, Shorts cookies, and optional DLP.
 ---
 
-import { Steps, Aside } from '@astrojs/starlight/components';
+This is the production deployment path for the public Pinchana API stack. Use the development Compose file for local source work instead.
 
-The canonical production deployment is a Linux VPS running Docker Engine and the repository's `docker-compose.yml` with prebuilt GHCR images.
+## Host requirements
 
-## 1. Prepare the host
+- Linux host with Docker Engine and Compose plugin.
+- Enough disk for the shared media cache and, if enabled, temporary DLP jobs.
+- A provider WireGuard key for Gluetun.
+- HTTPS reverse proxy/DNS for the public gateway origin.
+- Firewall rules that keep scraper/control/DLP internal ports away from untrusted networks.
 
-Create DNS for `api.example.com`, install current Docker Engine with the Compose plugin, clone recursively, and copy the example configuration:
+## Clone and configure
 
 ```sh
 git clone --recurse-submodules https://github.com/Pinchana/pinchana-api.git
@@ -18,85 +22,133 @@ cp .env.example .env
 chmod 600 .env
 ```
 
-Ensure `/dev/net/tun` exists. Allocate disk capacity beyond `CACHE_MAX_SIZE_GB`, and allow the VPN's required outbound traffic, DNS, HTTPS, and your administration channel.
+Replace placeholder production credentials at minimum:
 
-## 2. Configure secrets
+```dotenv
+WIREGUARD_PRIVATE_KEY=REPLACE_WITH_PROVIDER_KEY
+GLUETUN_API_KEY=REPLACE_WITH_RANDOM_CONTROL_KEY
+PINCHANA_API_KEYS={"operator":"REPLACE_WITH_LONG_RANDOM_MACHINE_KEY"}
+```
 
-At minimum, replace placeholders for the WireGuard private key, Gluetun API key, named machine API keys, Turnstile secret, expected Web hostname/action, and a random session secret of at least 32 characters. Add Spotify credentials if that module is enabled. If this origin will be selectable from the official Web app, install its issued public certificate envelope or mounted file. The [self-hosting quickstart](/self-hosting/quickstart/) includes copy-safe generation commands and explains each credential boundary.
+Add Spotify credentials if that module is enabled for real use.
 
-```ini
-WIREGUARD_PRIVATE_KEY=REPLACE_WITH_WIREGUARD_PRIVATE_KEY
-GLUETUN_API_KEY=REPLACE_WITH_LONG_RANDOM_CONTROL_KEY
-PINCHANA_API_KEYS={"production-client":"REPLACE_WITH_LONG_RANDOM_API_KEY"}
+## Pin released images
+
+Resolve the newest coherent API release before first startup and on later upgrades:
+
+```sh
+python scripts/update_rolling.py --env-file .env --dry-run
+python scripts/update_rolling.py --env-file .env
+```
+
+This replaces the mutable discovery tags in `.env` with exact repository digests only after all selected services resolve to the same released CalVer.
+
+If DLP should be deployed/updated too:
+
+```sh
+python scripts/update_rolling.py --env-file .env --dlp --dry-run
+python scripts/update_rolling.py --env-file .env --dlp
+```
+
+Do not mix independently chosen scraper image versions in production.
+
+## Start
+
+```sh
+docker compose --env-file .env config --quiet
+docker compose --env-file .env up --detach
+docker compose --env-file .env ps
+```
+
+Health check:
+
+```sh
+curl --fail-with-body --silent --show-error http://127.0.0.1:8080/health
+```
+
+## Networking
+
+The gateway and normal scraper services share Gluetun's network namespace. Service containers do not publish independent `ports:` blocks; the host mappings live on Gluetun.
+
+Even if operational host mappings for module ports exist, expose only gateway port `8080` through the public reverse proxy. Keep module ports `8081`–`8089` and Gluetun control `8000` firewalled from the Internet.
+
+Example public routing:
+
+```text
+https://api.example.com -> 127.0.0.1:8080
+```
+
+Terminate TLS at your reverse proxy and preserve normal HTTP range/request headers for media streaming.
+
+## Browser/Web configuration
+
+If a Pinchana Web deployment will use this API, configure the API's browser verifier:
+
+```dotenv
 TURNSTILE_SECRET_KEY=REPLACE_WITH_PRIVATE_TURNSTILE_SECRET
 TURNSTILE_EXPECTED_HOSTNAME=pinchana.example.com
 TURNSTILE_EXPECTED_ACTION=turnstile-spin-v1
 TURNSTILE_SESSION_SECRET=REPLACE_WITH_AT_LEAST_32_RANDOM_CHARACTERS
-PINCHANA_INSTANCE_CERTIFICATE='REPLACE_WITH_ISSUED_ONE_LINE_JSON_ENVELOPE'
-SPOTIFY_CLIENT_ID=REPLACE_IF_USED
-SPOTIFY_CLIENT_SECRET=REPLACE_IF_USED
 ```
 
-`PINCHANA_INSTANCE_CERTIFICATE` is required only when this origin should be selectable as a custom instance in the official Web app. A project maintainer issues it for the exact public API origin and the public Turnstile site key. Never copy the Ed25519 signing key to the server. See [Custom API instances](/web/custom-instances/) for issuance, file mounts, verification, and renewal.
+The corresponding public Turnstile site key belongs on the Web deployment.
 
-Mount YouTube cookie files read-only through `SHORTS_COOKIES_DIR` only when required. Protect their directory as a credential store.
+A self-hosted Web server using this API as its configured default origin does not require an instance certificate. A certificate is needed when this API should be accepted as a **custom instance** by a Web deployment that enforces project-issued instance trust.
 
-## Optional DLP profile
+## Shorts cookies
 
-Private downloads require the separate `dlp` Compose profile. Keep `DLP_ENABLED=false`, generate distinct gateway/owner/Redis secrets, create `/srv/pinchana-dlp/jobs` with mode `0711`, and pin the API, orchestrator, worker, and VPN images before starting it.
+The Shorts service can consume cookie files from:
 
-```sh
-python3 scripts/update-dlp-image-pins.py --env-file .env --dry-run
-python3 scripts/update-dlp-image-pins.py --env-file .env
-docker pull qmcgaw/gluetun:v3.40.0
-python3 scripts/dlp-prod-preflight.py --env-file .env --phase infra
-docker compose --env-file .env --profile dlp up --detach \
-  dlp-redis dlp-vpn dlp-api dlp-orchestrator
+```dotenv
+SHORTS_COOKIES_DIR=./secrets/yt-cookies
 ```
 
-The image-pin helper pulls all three Pinchana DLP images, including the dynamically launched worker, and replaces their mutable tags with digests. The VPN image must also be present and must use a non-`latest` tag or digest. Keep `--profile dlp` before the Compose subcommand on `pull`, `up`, `ps`, and `logs`; a start without that profile intentionally omits the optional services.
+Production Compose mounts that directory read-only to `/run/pinchana-cookies`.
 
-Require every DLP service to become healthy and complete anonymous plus encrypted-cookie canaries on a non-public instance. Then set `DLP_ENABLED=true`, recreate only `server`, run the `enable` preflight phase, and confirm authenticated `/web/capabilities` reports protocol 2. Roll back by setting the flag false and recreating `server`; active jobs can finish or expire independently.
-
-See [Private downloads (DLP)](/api/private-downloads-dlp/) and the repository's [production rollout runbook](https://github.com/Pinchana/pinchana-api/blob/main/docs/DLP_PRODUCTION_ROLLOUT.md).
-
-## 3. Restrict networking
-
-Production scraper services and the gateway share Gluetun's network namespace. The supplied Compose file publishes API, scraper, and control mappings on Gluetun for local operability; **do not expose them all to the Internet**.
-
-- Publish the gateway only through your HTTPS reverse proxy.
-- Set `API_HOST_PORT=127.0.0.1:8080` when the proxy is on-host, and likewise bind the scraper/control mappings to loopback or firewall them.
-- Deny public access to Gluetun control 8000 and scraper ports 8081–8089.
-- Expose only TCP 443 publicly (and 80 only for redirect/ACME if needed).
-- Keep the Docker socket and SSH/administration paths tightly restricted. The supplied gateway mount exists for optional dynamic module lifecycle; remove it with an override if `CONTAINER_MODE` will always remain false.
-
-Configure Caddy, Nginx, Traefik, or another reverse proxy for `https://api.example.com` → the local gateway port. Preserve streaming and `Range` headers and choose timeouts longer than the gateway's 120-second scrape forwarding timeout.
-
-## 4. Start and verify
-
-<Steps>
-1. Validate interpolation with `docker compose --env-file .env config --quiet`; inspect full rendered output only in a private terminal because it contains secrets.
-2. Pull and start: `docker compose --env-file .env pull && docker compose --env-file .env up --detach`.
-3. Inspect `docker compose --env-file .env ps` and `docker compose --env-file .env logs --tail=100 gluetun server`.
-4. Check `curl --fail-with-body --silent --show-error https://api.example.com/health`.
-5. If an instance certificate is configured, check `curl --fail-with-body --silent --show-error https://api.example.com/web/identity` and confirm that the response contains `payload` and `signature`.
-6. Send an authenticated request to `/v1/scrape`, then fetch its media URL with the same `X-API-Key` and a test `Range` header.
-7. From the Web hostname, complete Turnstile and confirm `/web/verify`, scrape, and media playback through the Web BFF.
-</Steps>
-
-## 5. Update safely
-
-Pin explicit GHCR release tags for repeatability, then:
+For rootful Docker with the current image:
 
 ```sh
-docker compose --env-file .env pull
+sudo install -d -o root -g root -m 0700 secrets/yt-cookies
+sudo chown root:root secrets/yt-cookies/cookies.txt
+sudo chmod 0600 secrets/yt-cookies/cookies.txt
+```
+
+Use the Docker host user instead for rootless Docker. Never store cookie files in Git or backups that are not designed for secrets.
+
+## DLP deployment
+
+DLP services are an optional Compose profile and should remain disabled publicly while infrastructure is prepared:
+
+```dotenv
+DLP_ENABLED=false
+```
+
+Use the production preflight and canary from [DLP operations and security](/dlp/operations/). Redis, DLP API, orchestrator, worker control paths, and the DLP worker network must remain internal.
+
+The job root defaults to `/srv/pinchana-dlp/jobs` and is temporary, not backup data.
+
+## Updates
+
+Routine application update:
+
+```sh
+python scripts/update_rolling.py --env-file .env --dry-run
+python scripts/update_rolling.py --env-file .env
 docker compose --env-file .env up --detach
-docker compose --env-file .env ps
-curl --fail-with-body --silent --show-error https://api.example.com/health
 ```
 
-Roll back by restoring previous tags and running `docker compose --env-file .env up --detach`. Preserve `scraper-cache`. Never use `docker restart gluetun`; use `docker compose --env-file .env up --detach --force-recreate gluetun`, recreate affected dependent services if necessary, and verify health.
+If changed environment variables must be applied to one service, recreate that service explicitly. For Gluetun, use Compose recreation rather than `docker restart`:
 
-<Aside type="caution">
-The public `/health` response includes module details. Administrator routes reveal more operational data and accept powerful actions; their API-key protection does not replace network restrictions and key rotation.
-</Aside>
+```sh
+docker compose --env-file .env up --detach --force-recreate gluetun
+```
+
+## Data worth preserving
+
+Treat these differently:
+
+- `.env` and mounted secrets — critical secret configuration; back up securely if your operational policy requires it.
+- `scraper-cache` — disposable working cache, not authoritative data.
+- mobile session SQLite — persistent state only if you actively use mobile installation grants.
+- DLP job directories/Redis — temporary and intentionally not backed up.
+- instance certificate envelope — public certificate material, but protect the operational file from accidental modification; never deploy its signing private key.

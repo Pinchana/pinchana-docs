@@ -1,38 +1,45 @@
 ---
-title: Pinchana overview
-description: What Pinchana does, who the documentation is for, and how the pieces fit together.
+title: Overview
+description: What Pinchana API and Pinchana Web do, and how the public pieces fit together.
 ---
 
-import { Card, CardGrid, LinkCard, Aside } from '@astrojs/starlight/components';
-import FontAwesomeIcon from '../../../components/FontAwesomeIcon.astro';
+Pinchana separates extraction, browser UX, authentication, and private downloads into clear trust boundaries.
 
-Pinchana retrieves public media from supported social and music URLs. The browser app at [pinchana.cc](https://pinchana.cc) is the easiest entry point; the API and self-hosting guides build on the same concepts.
+## Pinchana API
 
-<Aside type="caution" title="Preview release">
-Pinchana is currently marked **Preview**. Platform changes, region restrictions, removed posts, and upstream rate limits can affect results. Only download material you are permitted to access and use.
-</Aside>
+`Pinchana/pinchana-api` is the public orchestration repository. The gateway accepts URLs, matches them against `config/modules.yaml`, calls the appropriate scraper service, stores downloadable assets in a shared cache, and adapts results to the stable API v1 schema.
 
-## Architecture at a glance
+Production scraper and gateway containers share Gluetun's network namespace. The gateway is the public HTTP entry point; individual scraper services are not meant to be exposed directly in production.
 
-```text
-Browser → Next.js same-origin routes → Pinchana gateway → platform scraper
-                       │                       │              │
-                 HttpOnly session       shared cache     Gluetun VPN
-                       └──────── media stream ────────────────┘
-```
+The normal module set is:
 
-The Web app is a backend-for-frontend (BFF). It performs the page-load Turnstile flow, stores the signed browser session in an HttpOnly cookie, submits URLs to `/v1/web/scrape`, rewrites returned media paths, and streams files back through same-origin routes. Machine clients call `/v1/scrape` and `/media/...` with an `X-API-Key`.
+`TikTok · Instagram · YouTube Shorts · SoundCloud · YouTube Music · Spotify · Deezer · Threads · Twitter/X`
 
-The gateway selects one scraper module from the URL. Production Compose places the gateway and all scraper services in Gluetun's network namespace and persists their shared downloaded-media cache in a Docker volume.
+General YouTube downloads are not another scraper module. They use the optional DLP stack, an asynchronous browser-oriented service with per-job workers and encrypted cookie handoff.
 
-<CardGrid>
-	<Card title="Using the Web app"><FontAwesomeIcon name="web" />Paste a public URL, choose Media or Audio only, preview the result, and save it locally.</Card>
-	<Card title="Using the API"><FontAwesomeIcon name="code" />Send one request schema and receive one normalized response across all platforms.</Card>
-	<Card title="Operating Pinchana"><FontAwesomeIcon name="server" />Run the gateway, nine scraper modules, shared cache, VPN routing, and optional DLP workers with Docker Compose.</Card>
-</CardGrid>
+## Pinchana Web
 
-## Where to go next
+`Pinchana/pinchana-web` is the official browser interface. It is a Next.js 16 server-backed application rather than a static API client.
 
-<LinkCard title="Walk through the interface" description="Verification, controls, previews, settings, and shortcuts." href="/start/web-interface/" />
-<LinkCard title="Make your first API call" description="cURL, JavaScript, and Python examples." href="/api/quickstart/" />
-<LinkCard title="Self-host Pinchana" description="A linear API, Web, and optional DLP setup with generated credentials." href="/self-hosting/quickstart/" />
+The browser calls only same-origin `/api/...` routes. Next.js route handlers know the selected Pinchana API origin, forward signed browser sessions, rewrite protected media URLs, stream downloads, and keep the following values out of browser JavaScript:
+
+- the server-only API URL;
+- browser-session bearer tokens;
+- project instance verification keys;
+- API machine keys and API-side secrets.
+
+Visitors are gated by Cloudflare Turnstile. Pinchana API verifies the one-use Turnstile token and returns a signed web-session token; Pinchana Web stores that token in an HttpOnly cookie.
+
+## Custom API instances
+
+The official Web client does not accept arbitrary API URLs. A custom HTTPS origin must publish a project-issued Ed25519 certificate from `GET /web/identity`. The certificate binds the exact API origin, the Web hostname's public Turnstile site key, issuance time, and expiry time.
+
+This prevents the Web server from becoming a generic server-side request proxy and lets users distinguish project-approved instances from arbitrary endpoints.
+
+## Licenses
+
+- Pinchana API and its public service repositories use the MIT license unless a repository states otherwise.
+- Pinchana Web is `AGPL-3.0-only`.
+- These docs describe public API/Web behavior only.
+
+Continue with [Supported platforms](/start/platforms/) for URL coverage or [Web architecture and authentication](/web/architecture-auth/) for the request flow.

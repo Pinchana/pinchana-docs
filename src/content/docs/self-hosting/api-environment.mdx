@@ -1,107 +1,185 @@
 ---
 title: API environment reference
-description: Complete gateway, module, Compose, VPN, cache, authentication, and scraper configuration.
+description: Production VPN, authentication, images, DLP, instance certificates, ports, module behavior, Shorts cookies, and music credentials.
 ---
 
-Values below are derived from `.env.example`, both Compose files, module registry placeholders, and runtime lookups. Compose can override runtime defaults; use the deployed Compose file as the final authority.
+`Pinchana/pinchana-api/.env.example` is the canonical environment template. This page groups the important settings by responsibility; copy the current example instead of reconstructing a `.env` from this page.
 
-## Secrets and Web authentication
+## Core production VPN and machine auth
 
-| Variable | Default | Used by |
+| Variable | Typical/default | Purpose |
 | --- | --- | --- |
-| `WIREGUARD_PRIVATE_KEY` | empty | Production Gluetun; required for the canonical NordVPN WireGuard stack |
-| `GLUETUN_API_KEY` | `secret-key` | Gluetun control server and gateway client; replace in production |
-| `PINCHANA_API_KEYS` | empty | Gateway named machine keys, JSON object |
-| `TURNSTILE_SECRET_KEY` | empty | Gateway Cloudflare Siteverify secret |
-| `TURNSTILE_EXPECTED_HOSTNAME` | empty | Optional exact hostname check; configure in production |
-| `TURNSTILE_EXPECTED_ACTION` | `turnstile-spin-v1` | Exact widget action check |
-| `TURNSTILE_SESSION_SECRET` | empty | HMAC secret, minimum 32 characters |
-| `TURNSTILE_SESSION_MAX_AGE` | `43200` | Seconds, clamped to 60–86400 |
-| `PINCHANA_INSTANCE_CERTIFICATE` | empty | One-line public signed envelope |
-| `PINCHANA_INSTANCE_CERTIFICATE_FILE` | empty | Alternative mounted envelope file |
-| `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` | empty | Spotify module API credentials |
+| `WIREGUARD_PRIVATE_KEY` | required in production Compose | WireGuard/NordLynx private key used by Gluetun |
+| `GLUETUN_API_KEY` | placeholder default exists | Protects the Gluetun control API; replace it |
+| `SERVER_COUNTRIES` | `Netherlands,United States` | Preferred VPN server countries |
+| `PINCHANA_API_KEYS` | JSON object | Independently revocable machine API keys |
 
-Never commit any value in this table. The instance certificate is public, but the project's Ed25519 **private signing key** must never be deployed to an instance.
+The development Compose stack does not require production VPN credentials.
 
-## Private download DLP
+## Browser authentication
 
-The DLP profile is optional and defaults off. Its three secrets must be distinct, non-placeholder values in production.
-
-| Variable | Default | Meaning |
+| Variable | Default/example | Purpose |
 | --- | --- | --- |
-| `DLP_ENABLED` | `false` | Advertise and accept browser DLP jobs only when internal health also passes |
-| `DLP_URL` | `http://dlp-api:8080` in Compose | Internal DLP API origin; never publish it |
-| `DLP_GATEWAY_TOKEN` | empty/disabled placeholder | Gateway-only service credential, minimum 32 characters |
-| `DLP_OWNER_SECRET` | empty | HMAC secret for deriving opaque ownership from the signed session nonce |
-| `DLP_REDIS_PASSWORD` | disabled placeholder | Password for internal ephemeral Redis |
-| `DLP_HOST_JOBS_DIR` | `/tmp/pinchana-dlp-jobs` Compose fallback | Absolute host path for temporary per-job output; production example uses `/srv/pinchana-dlp/jobs` |
-| `DLP_DOH_URL` | `https://cloudflare-dns.com/dns-query` | HTTPS resolver used for SSRF checks; Compose forces these requests through the dedicated DLP VPN proxy |
-| `DLP_API_IMAGE` | GHCR `dlp-api:latest` | DLP API image; pin a release tag/digest in production |
-| `DLP_ORCHESTRATOR_IMAGE` | GHCR `dlp-orchestrator:latest` | Docker-socket orchestrator image; pin it |
-| `DLP_WORKER_IMAGE` | GHCR `dlp-worker:latest` | Ephemeral worker image; pin the same release |
-| `DLP_VPN_IMAGE` | `qmcgaw/gluetun:v3.40.0` | Dedicated DLP VPN/proxy image |
-| `DLP_WORKER_NETWORK` | `pinchana-dlp-worker` | Internal-only dynamic worker network |
-| `DLP_JOB_TTL_SECONDS` | `7200` | Job metadata and temporary file lifetime; must exceed the key TTL and cannot exceed one day |
-| `DLP_KEY_TTL_SECONDS` | `300` | Ephemeral worker-key submission window, capped at 600 seconds |
-| `DLP_MAX_ACTIVE_JOBS` | `3` | Global active-job capacity |
-| `DLP_RATE_LIMIT_PER_MINUTE` | `10` | Allocation rate per opaque browser-session owner |
-| `DLP_EXECUTION_TIMEOUT_SECONDS` | `2700` | Worker download execution limit; orchestrator cleanup allows an additional short grace period |
-| `DLP_MAX_OUTPUT_BYTES` | `8589934592` | Maximum completed output size; temporary merge workspace is twice this limit plus 512 MiB |
+| `TURNSTILE_SECRET_KEY` | required for Web | Private Cloudflare Siteverify secret |
+| `TURNSTILE_EXPECTED_HOSTNAME` | deployment-specific | Final Pinchana Web hostname |
+| `TURNSTILE_EXPECTED_ACTION` | `turnstile-spin-v1` | Expected widget action |
+| `TURNSTILE_SESSION_SECRET` | required | Signs browser-session tokens; use 32+ random chars |
+| `TURNSTILE_SESSION_MAX_AGE` | `43200` | Browser session lifetime in seconds |
 
-The Compose `dlp` profile also starts internal Redis and a dedicated VPN. Redis uses RAM-backed storage; completed media remains only until job expiry. Put the global option before the command: `docker compose --env-file .env --profile dlp up --detach ...`. A start without the profile does not create those services. Run `scripts/dlp-prod-preflight.py` from `pinchana-api` before both infrastructure and enable phases. See [Private downloads (DLP)](/api/private-downloads-dlp/) for the API contract.
+The public Turnstile **site key** belongs in Pinchana Web, not in this private API secret group.
 
-## Gateway, cache, and VPN
+## Mobile installation sessions
 
-| Variable | Default | Meaning |
+These routes are not used by Pinchana Web, but the gateway exposes optional native-client installation grants.
+
+Important defaults:
+
+```dotenv
+MOBILE_AUTH_MODE=guest
+MOBILE_AUTH_REQUIRED=false
+MOBILE_ACCESS_TOKEN_MAX_AGE=900
+MOBILE_REFRESH_TOKEN_MAX_AGE=2592000
+MOBILE_CHALLENGE_TTL=120
+MOBILE_CHALLENGE_RATE_WINDOW=600
+MOBILE_CHALLENGE_RATE_LIMIT=10
+MOBILE_TRUST_PROXY_HEADERS=false
+MOBILE_GUEST_SCOPES=mobile:scrape,mobile:media,mobile:capabilities
+```
+
+`MOBILE_SESSION_SECRET` must be independent from every other signer/credential. Leave attestation URL/token empty unless an attestation verifier is actually deployed.
+
+## Rolling application images
+
+Normal API images use variables such as:
+
+- `SERVER_IMAGE`
+- `TIKTOK_IMAGE`
+- `INSTAGRAM_IMAGE`
+- `SHORTS_IMAGE`
+- `SOUNDCLOUD_IMAGE`
+- `YTMUSIC_IMAGE`
+- `SPOTIFY_IMAGE`
+- `DEEZER_IMAGE`
+- `THREADS_IMAGE`
+- `TWITTER_IMAGE`
+
+The example starts with `:stable` discovery tags. Production should immediately run:
+
+```sh
+python scripts/update_rolling.py --env-file .env
+```
+
+The updater replaces the mutable discovery values with immutable digests from one coherent release. Do not hand-edit each service to unrelated image versions.
+
+## DLP
+
+DLP is disabled by default:
+
+```dotenv
+DLP_ENABLED=false
+```
+
+Important variables:
+
+| Variable | Current default/example | Purpose |
 | --- | --- | --- |
-| `CACHE_PATH` | `./cache` | Direct-run cache path; Compose uses `/app/cache` |
-| `CACHE_MAX_SIZE_GB` | `10.0` | Per-process view of shared size-based cache limit |
-| `MEDIA_DOWNLOAD_CONCURRENCY` | `4` | Shared storage downloader concurrency; minimum 1 |
-| `YTDLP_CONCURRENCY` | `2` | TikTok/Shorts extraction concurrency; minimum 1 |
-| `VPN_ENABLED` | `true` | Module health/rotation behavior; dev Compose sets false |
-| `VPN_SERVICE_PROVIDER` | `nordvpn` | Gluetun provider in production Compose |
-| `SERVER_COUNTRIES` | empty | Preferred VPN countries, comma-separated |
-| `GLUETUN_CONTROL_URL` | `http://localhost:8000` | Direct-run Gluetun control origin |
-| `GLUETUN_CONTROL_PORT` | `8000` | Internal control port |
-| `CONTAINER_MODE` | `false` | Enable Docker-socket lifecycle manager |
-| `MODULES_CONFIG` | `/app/config/modules.yaml` in container; `.env.example` suggests `./config/modules.yaml` direct | Registry YAML |
-| `IN_PROCESS_PLUGINS` | empty | Comma-separated import module names |
-| `MODULE_NETWORK` | `container:gluetun` | Dynamic manager network |
-| `MODULE_CACHE_VOLUME` | `scraper-cache` | Dynamic manager volume placeholder in registry config |
+| `DLP_GATEWAY_TOKEN` | replace | Internal gateway → DLP API credential |
+| `DLP_OWNER_SECRET` | replace | Derives opaque job-owner identities |
+| `DLP_REDIS_PASSWORD` | replace | Internal Redis auth |
+| `DLP_HOST_JOBS_DIR` | `/srv/pinchana-dlp/jobs` | Temporary host job storage |
+| `DLP_DOH_URL` | Cloudflare DNS-over-HTTPS | DLP resolver path |
+| `DLP_WORKER_IMAGE` | `:stable` initially | Worker image; pin via updater |
+| `DLP_API_IMAGE` | `:stable` initially | DLP API image |
+| `DLP_ORCHESTRATOR_IMAGE` | `:stable` initially | Orchestrator image |
+| `DLP_VPN_IMAGE` | `qmcgaw/gluetun:v3.40.0` | Separate DLP VPN image |
+| `DLP_JOB_TTL_SECONDS` | `7200` | Job lifetime |
+| `DLP_KEY_TTL_SECONDS` | `300` | Allocation worker-key lifetime |
+| `DLP_MAX_ACTIVE_JOBS` | `3` | Concurrency limit |
+| `DLP_RATE_LIMIT_PER_MINUTE` | `10` | Allocation/submission abuse limit |
+| `DLP_EXECUTION_TIMEOUT_SECONDS` | `2700` | Worker execution timeout |
+| `DLP_MAX_OUTPUT_BYTES` | `8589934592` | 8 GiB final artifact limit |
 
-## Module ports and endpoints
+Use `scripts/update_rolling.py --dlp` and the DLP preflight before enabling the capability.
 
-Each `MODULE_<NAME>_PORT` defaults to its service port and each production endpoint defaults to `http://localhost:<port>`: `TIKTOK` 8081, `INSTAGRAM` 8082, `SHORTS` 8083, `SOUNDCLOUD` 8084, `YTMUSIC` 8085, `SPOTIFY` 8086, `DEEZER` 8087, `THREADS` 8088, `TWITTER` 8089.
+## Instance certificate
 
-The corresponding `MODULE_<NAME>_ENDPOINT` overrides the registry target. Development Compose instead reads `DEV_MODULE_<NAME>_ENDPOINT`, defaulting to `http://<compose-service>:<port>` so production localhost values cannot leak into its bridge network.
+```dotenv
+PINCHANA_INSTANCE_CERTIFICATE=
+PINCHANA_INSTANCE_CERTIFICATE_FILE=
+```
 
-`config/modules.yaml` also recognizes `MODULE_<NAME>_IMAGE_TAG` and `MODULE_<NAME>_CONTAINER_NAME` for the dynamic manager. These differ from the top-level Compose names/images below.
+These expose a project-issued **public** certificate envelope from `/web/identity` so the official Web client can authorize this API as a custom instance. The signing private key must never be placed on the API host.
 
-## Compose images, names, and host ports
+If both are set, the inline certificate takes precedence. A file variable must point to the mounted container path.
 
-| Family | Variables and defaults |
-| --- | --- |
-| Images | `GLUETUN_IMAGE=qmcgaw/gluetun:latest`; `SERVER_IMAGE` and `<NAME>_IMAGE=ghcr.io/pinchana/pinchana-api/<service>:latest` |
-| Container names | `GLUETUN_CONTAINER_NAME=gluetun`, `SERVER_CONTAINER_NAME=pinchana-server`, and service names `pinchana-tiktok`, `pinchana-inst`, `pinchana-shorts`, `pinchana-soundcloud`, `pinchana-ytmusic`, `pinchana-spotify`, `pinchana-deezer`, `pinchana-threads`, `pinchana-twitter` |
-| Host mappings | `API_HOST_PORT=8080`, `<NAME>_HOST_PORT=8081` through `8089`, `GLUETUN_CONTROL_HOST_PORT=8000`; each left-hand value may include a bind IP, such as `127.0.0.1:8080` |
+## Compose names and ports
 
-Production publishes these mappings on Gluetun. For a hardened deployment, bind or firewall everything except the reverse-proxied API and avoid exposing 8000/8081–8089 publicly.
+Default host ports:
 
-## Public build diagnostics
+```text
+API 8080
+TikTok 8081
+Instagram 8082
+Shorts 8083
+SoundCloud 8084
+YouTube Music 8085
+Spotify 8086
+Deezer 8087
+Threads 8088
+Twitter/X 8089
+Gluetun control 8000
+```
 
-Official gateway images bake `PINCHANA_BUILD_COMMIT` and `PINCHANA_BUILD_COMMITS` during the publishing workflow. `/web/build` validates and returns only the Preview label plus public repository/commit pairs. These are image metadata rather than normal deployment secrets or `.env.example` settings; self-built images without them safely return an empty commit map.
+Production services share Gluetun's network namespace. The host mappings live on Gluetun; public reverse proxies should target only API 8080.
 
-## Scraper-specific variables
+Container names and host ports can be overridden with the corresponding `*_CONTAINER_NAME` and `*_HOST_PORT` variables.
 
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `SHORTS_COOKIES_DIR` | `./secrets/yt-cookies` | Host directory mounted read-only into Shorts |
-| `YTDLP_COOKIES_DIR` | `/run/pinchana-cookies` | Runtime cookie directory; Shorts checks named files then any `.txt` |
-| `YTDLP_COOKIE_FILE` | empty | Preferred explicit cookie file |
-| `YTDLP_COOKIE_TMP_DIR` | `/tmp` | Shorts copies a source cookie to a mode-0600 temporary file |
-| `SHORTS_MAX_MB_PER_MINUTE` | `18.0` | Still forwarded by Compose/config for compatibility; current Shorts `_optimize_if_needed` is a no-op and prioritizes source quality |
-| `PROXY` | empty | Read by SoundCloud, YouTube Music, Spotify, and Deezer direct processes |
-| `THREADS_HTTP_CONCURRENCY` | `20` | Threads HTTP client pool size |
-| `THREADS_BROWSER_CONCURRENCY` | `2` | Threads browser fallback semaphore |
+## Cache and module behavior
 
-`PINCHANA_INST_LIVE` and `PINCHANA_THREADS_LIVE_SHORTCODE` are test-only switches/inputs, not production runtime configuration.
+Important shared values:
+
+```dotenv
+CACHE_MAX_SIZE_GB=10.0
+MEDIA_DOWNLOAD_CONCURRENCY=4
+YTDLP_CONCURRENCY=1
+VPN_ENABLED=true
+CONTAINER_MODE=false
+MODULES_CONFIG=./config/modules.yaml
+MODULE_NETWORK=container:gluetun
+```
+
+Production module endpoints default to `http://localhost:<port>` because all services share one network namespace. Development uses separate `DEV_MODULE_*_ENDPOINT` service-DNS values.
+
+TikTok has additional request pacing/retry/transcode/rotation controls in `.env.example`; use those current documented defaults rather than hard-coding custom sleeps in application code.
+
+## YouTube Shorts cookies
+
+```dotenv
+SHORTS_COOKIES_DIR=./secrets/yt-cookies
+YTDLP_COOKIES_DIR=/run/pinchana-cookies
+YTDLP_COOKIE_FILE=
+SHORTS_MAX_MB_PER_MINUTE=18.0
+```
+
+Production Compose mounts `SHORTS_COOKIES_DIR` read-only into `/run/pinchana-cookies`.
+
+For rootful Docker with the current root-running Shorts image, use a private root-owned directory/file (`0700` directory, `0600` cookie file). Rootless Docker should use the Docker host user instead.
+
+`YTDLP_COOKIE_FILE` is an optional direct-run single-file fallback when no directory is configured.
+
+## Spotify
+
+```dotenv
+SPOTIFY_CLIENT_ID=
+SPOTIFY_CLIENT_SECRET=
+```
+
+These are required for the Spotify module. Keep them server-side.
+
+## Protect `.env`
+
+```sh
+chmod 600 .env
+```
+
+Never commit `.env`, cookies, certificates containing private material, WireGuard keys, API keys, Turnstile secrets, DLP secrets, or Spotify credentials.

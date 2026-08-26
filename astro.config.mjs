@@ -7,7 +7,7 @@ export default defineConfig({
 	integrations: [
 		starlight({
 			title: 'Pinchana Docs',
-			description: 'Use, integrate, develop, and deploy Pinchana.',
+			description: 'Official documentation for Pinchana API and Pinchana Web.',
 			favicon: '/favicon.svg',
 			logo: {
 				src: './src/assets/cat.svg',
@@ -30,7 +30,7 @@ export default defineConfig({
 					label: 'Start Here',
 					items: [
 						{ label: 'Overview', slug: 'start/overview' },
-						{ label: 'Web interface', slug: 'start/web-interface' },
+						{ label: 'Using Pinchana Web', slug: 'start/web-interface' },
 						{ label: 'Supported platforms', slug: 'start/platforms' },
 						{ label: 'Downloads', slug: 'start/downloads' },
 						{ label: 'Troubleshooting', slug: 'start/troubleshooting' },
@@ -42,8 +42,8 @@ export default defineConfig({
 						{ label: 'Architecture & authentication', slug: 'web/architecture-auth' },
 						{ label: 'Settings & storage', slug: 'web/settings-storage' },
 						{ label: 'Custom API instances', slug: 'web/custom-instances' },
-						{ label: 'Browser media pipeline', slug: 'web/media-pipeline' },
-						{ label: 'Development & configuration', slug: 'web/development' },
+						{ label: 'Media & download pipeline', slug: 'web/media-pipeline' },
+						{ label: 'Development', slug: 'web/development' },
 					],
 				},
 				{
@@ -59,26 +59,20 @@ export default defineConfig({
 					],
 				},
 				{
-					label: 'DLP',
+					label: 'Private downloads',
 					items: [
-						{ label: 'Protocol & private downloads', slug: 'api/private-downloads-dlp' },
-						{ label: 'Operations & security', slug: 'dlp/operations' },
+						{ label: 'DLP protocol v2', slug: 'api/private-downloads-dlp' },
+						{ label: 'DLP operations & security', slug: 'dlp/operations' },
 					],
 				},
 				{
-					label: 'Translating',
-					items: [
-						{ label: 'Translation guide', slug: 'translating' },
-					],
-				},
-				{
-					label: 'Development & Operations',
+					label: 'Self-hosting & Development',
 					items: [
 						{ label: 'Self-hosting quickstart', slug: 'self-hosting/quickstart' },
 						{ label: 'API development', slug: 'self-hosting/api-development' },
 						{ label: 'API environment reference', slug: 'self-hosting/api-environment' },
 						{ label: 'Web development', slug: 'self-hosting/web-development' },
-						{ label: 'Operations', slug: 'self-hosting/operations' },
+						{ label: 'Operations & releases', slug: 'self-hosting/operations' },
 						{ label: 'Contributing', slug: 'self-hosting/contributing' },
 					],
 				},
@@ -86,8 +80,14 @@ export default defineConfig({
 					label: 'Deployment',
 					items: [
 						{ label: 'Deploy the API', slug: 'deployment/api' },
-						{ label: 'Deploy the Web app', slug: 'deployment/web' },
+						{ label: 'Deploy Pinchana Web', slug: 'deployment/web' },
 						{ label: 'Deploy these docs', slug: 'deployment/docs' },
+					],
+				},
+				{
+					label: 'Translations',
+					items: [
+						{ label: 'Translation guide', slug: 'translating' },
 					],
 				},
 			],

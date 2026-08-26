@@ -1,55 +1,123 @@
 ---
-title: API architecture and modules
-description: Gateway routing, module modes, cache, Gluetun networking, and the supported module matrix.
+title: Architecture and modules
+description: Parent orchestration repository, gateway routing, scraper services, Gluetun networking, shared storage, development networking, and DLP separation.
 ---
 
-## Request path
+`Pinchana/pinchana-api` is an orchestration repository. The parent repo owns Docker Compose, module configuration, release tooling, and Git submodule pointers; the Python services are separate repositories.
+
+## Repository layout
+
+The main public components are:
+
+- `pinchana-server` — central FastAPI gateway, authentication, routing, normalized API v1 adapter, protected media, browser-session routes, public build manifest, and DLP gateway integration.
+- `pinchana-core` — shared models/storage/music/VPN/Docker helpers used by services.
+- `pinchana-tiktok`
+- `pinchana-inst`
+- `pinchana-shorts`
+- `pinchana-soundcloud`
+- `pinchana-ytmusic`
+- `pinchana-spotify`
+- `pinchana-deezer`
+- `pinchana-threads`
+- `pinchana-twitter`
+- `pinchana-dlp` — separate asynchronous private-download subsystem.
+
+Each root `pinchana-*` Python submodule has its own `pyproject.toml`, `uv.lock`, Dockerfile, source package, and independent Git history.
+
+## Normal scrape request flow
 
 ```text
-POST /v1/scrape
-  → validate key and ScrapeRequest
-  → match URL against in-process plugins, then container registry
-  → call /{plugin}/scrape in-process OR {module endpoint}/scrape over HTTP
-  → normalize to the API v1 result and metadata envelopes
-  → serve downloaded paths from the shared cache
+client
+  │
+  │ POST /v1/scrape + X-API-Key
+  ▼
+pinchana-server
+  │ match URL against config/modules.yaml
+  ├───────────────┬───────────────┬───────────────┐
+  ▼               ▼               ▼               ▼
+TikTok         Instagram       Threads         ...module
+  │               │               │
+  └──── write normalized source files into shared scraper-cache
+                  │
+                  ▼
+            pinchana-server
+     adapt module result to API v1
+                  │
+                  ▼
+           { data, meta }
 ```
 
-`IN_PROCESS_PLUGINS` imports Python modules that register routers and is intended primarily for local development. The container registry always reads `MODULES_CONFIG` (default `/app/config/modules.yaml`) and assumes that configured services are already running. `CONTAINER_MODE=true` adds a separate Docker-socket-backed manager that can build, start, and stop them. The unversioned `/scrape` route remains available for legacy clients.
+The gateway selects the first enabled module whose route pattern matches the submitted complete HTTP(S) URL. It can call registered in-process plugins for development, but production uses the containerized module endpoints configured in `modules.yaml`.
 
-## Private download path
+## Service ports
 
-DLP is deliberately outside the module router:
+| Service | Internal port |
+| --- | ---: |
+| Gateway | 8080 |
+| TikTok | 8081 |
+| Instagram | 8082 |
+| YouTube Shorts | 8083 |
+| SoundCloud | 8084 |
+| YouTube Music | 8085 |
+| Spotify | 8086 |
+| Deezer | 8087 |
+| Threads | 8088 |
+| Twitter/X | 8089 |
+| Gluetun control API | 8000 |
 
-```text
-browser Cookie Vault
-  → allocate through same-origin Next.js and signed Web session
-  → encrypt optional Netscape cookies to the ephemeral worker key
-  → pinchana-server derives an opaque session owner and forwards ciphertext
-  → internal DLP API stores job metadata/ciphertext in Redis
-  → Docker-socket orchestrator starts one hardened worker
-  → worker downloads through the dedicated DLP VPN and streams a temporary file
-```
-
-The DLP API never holds the Docker socket. Normal scraper containers do not join the worker network. See [Private downloads (DLP)](/api/private-downloads-dlp/) for protocol v2 and its trust boundaries.
+Clients should integrate with the gateway on 8080 rather than individual scraper ports.
 
 ## Production networking
 
-The canonical production Compose stack gives the gateway and every scraper `network_mode: container:gluetun`. They therefore share Gluetun's interfaces and reach one another on `localhost` ports. Outbound scraper traffic uses the VPN. Only Gluetun owns published ports in that topology; scraper containers must not declare their own `ports`.
+In production, the gateway and normal scraper containers use Gluetun's network namespace:
 
-All services mount the `scraper-cache` volume at `/app/cache`. Gluetun exposes a private control API at port 8000 to the gateway for status and rotation. Keep that control port and scraper ports away from the public Internet.
+```yaml
+network_mode: container:gluetun
+```
 
-## Module matrix
+The individual services therefore do not publish their own `ports:` blocks. Host mappings live on the Gluetun service. Public reverse-proxy ingress should target only the gateway port; scraper/control ports should be firewalled from untrusted networks even when mapped for host operations.
 
-| Module | Internal port | Patterns | Notable runtime needs |
-| --- | ---: | --- | --- |
-| TikTok | 8081 | TikTok domains | yt-dlp concurrency; can return image slideshows/audio |
-| Instagram | 8082 | Instagram domains | Public post extraction; optional opt-in live tests |
-| Shorts | 8083 | YouTube Shorts paths | Optional cookies and size-target transcoding |
-| SoundCloud | 8084 | SoundCloud domains | Music downloader, optional proxy |
-| YouTube Music | 8085 | `music.youtube.com` | yt-dlp cookies/proxy support in shared music helper |
-| Spotify | 8086 | `open.spotify.com` | Spotify client ID and secret |
-| Deezer | 8087 | Deezer/link domains | Music downloader, optional proxy |
-| Threads | 8088 | `threads.net`, `threads.com` | HTTP/browser concurrency controls |
-| Twitter | 8089 | X/Twitter and fixup domains | GraphQL extraction and local media cache |
+All outbound scraper traffic shares the VPN namespace. The gateway talks to module endpoints via `localhost:<module-port>` from inside that shared namespace.
 
-Module `/health` responses include service and VPN state, with extra readiness fields where relevant (for example Spotify credentials, Shorts cookies, or Threads extraction metrics). The gateway returns `503` if any configured module is unhealthy.
+## Development networking
+
+`docker-compose.dev.yml` deliberately does not copy the production network model. It uses a normal bridge network, service DNS names, direct development ports, and `VPN_ENABLED=false` so contributors can build/test without production WireGuard credentials.
+
+Separate `DEV_MODULE_*_ENDPOINT` values prevent production `localhost` endpoints from leaking into the development bridge configuration.
+
+## Shared media cache
+
+The gateway and modules share a Docker volume mounted at `/app/cache`. Modules place extracted/downloaded media there; the gateway serves protected cache paths to authenticated clients.
+
+`CACHE_MAX_SIZE_GB` controls the shared cache target. This is temporary working storage, not a durability guarantee.
+
+## Browser flow
+
+Pinchana Web does not change the module architecture. Its `POST /v1/web/scrape` gateway route goes through the same module selection and normalized response adapter as `/v1/scrape`, but uses signed browser-session authentication and browser-scoped media paths.
+
+## DLP is not a module
+
+The DLP stack is intentionally separate from `config/modules.yaml` and normal scraper ports. It exists for resource-heavy private YouTube downloads and has a different security model:
+
+```text
+Browser
+  -> Pinchana Web BFF
+  -> pinchana-server /web/dlp/...
+  -> internal dlp-api
+  -> Redis metadata/ciphertext
+  -> orchestrator (only Docker-socket holder)
+  -> one ephemeral hardened worker per job
+  -> DLP VPN egress
+```
+
+The DLP profile uses internal Docker networks. Redis, the orchestrator, and worker control endpoints must not be publicly exposed.
+
+## Build and release architecture
+
+Official API images are published under:
+
+```text
+ghcr.io/pinchana/pinchana-api/<service>:<tag>
+```
+
+The parent `VERSION` is the product CalVer source of truth. Release tooling synchronizes Python package versions/lockfiles and Git submodule pointers before the parent is tagged. Production deploys should then use `scripts/update_rolling.py` to resolve one coherent released version and pin immutable image digests.

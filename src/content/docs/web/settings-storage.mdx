@@ -1,11 +1,36 @@
 ---
 title: Settings and browser storage
-description: Persisted preferences, cookies, consent state, and privacy behavior.
+description: Current Web defaults, persistent preferences, privacy choices, cookies, Cookie Vault, locale storage, and diagnostics.
 ---
 
-## Settings
+Pinchana Web keeps ordinary UI/download preferences in browser local storage and keeps authentication/custom-instance state in HttpOnly cookies.
 
-The `pinchana-settings` local-storage object is updated when preferences change:
+## Current defaults
+
+The current client initializes these settings before applying any saved preferences:
+
+| Setting | Default |
+| --- | --- |
+| Save automatically after processing | On |
+| ZIP multiple files | On |
+| Filename style | Pretty |
+| Decorative paws | On |
+| Reduce motion | Off |
+| Convert Twitter/X looping video to GIF when saving | On |
+| Preferred download mode | Media |
+| YouTube video quality | 1080p |
+| YouTube codec | H.264 |
+| YouTube container | MP4 |
+| YouTube audio format | MP3 |
+| YouTube audio bitrate | 128 kb/s |
+| Prefer better YouTube audio | Off |
+| Dubbed track | Original |
+| Embedded subtitle | None |
+| Anonymous performance monitoring | Off |
+
+DLP capability data can remove unsupported quality/codec/container/audio options from the UI. A saved value that is not advertised by the selected API falls back to an available choice.
+
+The normal settings object is stored under `pinchana-settings` and currently contains:
 
 ```json
 {
@@ -16,9 +41,9 @@ The `pinchana-settings` local-storage object is updated when preferences change:
   "reduceMotion": false,
   "convertTwitterGifs": true,
   "downloadMode": "media",
-  "dlpQuality": "best",
-  "dlpCodec": "auto",
-  "dlpContainer": "auto",
+  "dlpQuality": "1080p",
+  "dlpCodec": "h264",
+  "dlpContainer": "mp4",
   "dlpAudioFormat": "mp3",
   "dlpAudioBitrate": "128",
   "preferBetterAudio": false,
@@ -27,47 +52,46 @@ The `pinchana-settings` local-storage object is updated when preferences change:
 }
 ```
 
-| Preference | Default | Effect |
-| --- | ---: | --- |
-| Save immediately | on | Starts the save after processing/conversion |
-| ZIP multiple files | on | Combines carousel or track-list files into one archive |
-| Filename style | Pretty | Chooses Classic, Basic, Pretty, or Nerdy branded filenames; every style keeps `[pinchana.cc]` |
-| Background paws | on | Shows the decorative floating pattern |
-| Reduce motion | off | Disables interface animations/transitions |
-| Convert Twitter GIFs | on | Converts looping Twitter/X video assets to GIF when saving; disabling it keeps the source video |
-| Download mode | Media | Remembers Media or Audio only |
-| YouTube video options | Best / Auto / Auto | Preferred quality, codec, and container |
-| YouTube audio format | MP3 | Best source, MP3, OGG, WAV, or Opus |
-| YouTube audio bitrate | 128 kb/s | Used for lossy audio conversion |
-| Better YouTube audio | off | Prefers higher-bitrate/sample-rate audio streams |
-| Preferred dubbed track | Original | Uses the selected language when available |
-| Embedded subtitles | None | Embeds the preferred creator subtitle, falling back to automatic captions, in YouTube video downloads only |
+## Privacy preference
 
-The **YouTube** settings category also contains the encrypted Cookie Vault. Vault labels, domains, and cookie values remain inside its separately encrypted IndexedDB payload; they are never stored in `pinchana-settings`.
+Monitoring is a build-time deployment choice and a separate user preference.
 
-The custom API origin is deliberately **not** kept in local storage. Its signed certificate is stored in a protected cookie and the verified origin is derived from certificate claims server-side.
+- If `SENTRY_MONITORING_ENABLED=false`, the Web build does not use a supplied DSN for monitoring.
+- If monitoring is enabled by the deployment, browser error reporting is sanitized.
+- Anonymous browser performance measurements require the visitor's explicit opt-in.
 
-## Browser storage inventory
+The preference is stored as versioned JSON under `pinchana-privacy-preferences`. Its `anonymousAnalytics` value defaults to `false`. The old `pinchana_cookie_consent` key is removed when the new privacy preference is written.
+
+## Storage inventory
 
 | Name | Storage | Purpose |
 | --- | --- | --- |
 | `pinchana-settings` | local storage | UI and download preferences |
-| `pinchana_cookie_consent` | local storage | Hides the informational cookie banner after acceptance |
+| `pinchana-privacy-preferences` | local storage | Monitoring acknowledgement and anonymous performance opt-in |
 | `pinchana_web_session` | HttpOnly, SameSite=Strict cookie | Signed API browser-session token |
-| `pinchana_instance` | HttpOnly, SameSite=Strict cookie | Project-signed certificate for the selected custom API |
-| `pinchana_locale` | HttpOnly, SameSite=Lax cookie | Selected interface language, retained for one year |
-| `cf_clearance` (conditional) | Cloudflare cookie | May exist only if Turnstile pre-clearance or a Cloudflare Challenge is enabled |
+| `pinchana_instance` | HttpOnly, SameSite=Strict cookie | Selected project-signed custom-instance certificate |
+| `pinchana_locale` | HttpOnly, SameSite=Lax cookie | Interface language |
+| Cookie Vault payload | IndexedDB | One encrypted vault containing profile labels, domains, and cookies |
+| `cf_clearance` | Cloudflare cookie, conditional | May exist when Cloudflare clearance/challenge features are enabled |
 
-Session and instance cookies use `Secure` in production and path `/`. The instance cookie's `Max-Age` is the remaining certificate lifetime. Selecting or restoring an instance deletes the current session cookie; restoring default also deletes the instance cookie.
+Session/instance cookies use `Secure` in production. Changing the selected API instance clears the current browser session so verification is repeated against the correct API/Turnstile configuration.
 
-Pinchana Web uses no analytics, advertising, tracking, or marketing cookies. Font Awesome and application fonts are served from the same origin. The browser does not contact external font providers. Pinchana does not embed third-party platform login widgets or scripts, although processing a URL necessarily asks the API to contact that platform server-side.
+## Cookie Vault
 
-## Interface languages
+Cookie Vault is separate from `pinchana-settings`. It stores a single AES-256-GCM encrypted payload in IndexedDB. PBKDF2-SHA256 uses a device-calibrated iteration count with a 600,000-iteration minimum, and the derived key is not persisted.
 
-English and Ukrainian are active interface languages. The locale cookie keeps server-rendered and client-rendered content consistent. Legal catalogs have a separate approval list; when a selected interface language does not have approved legal text, the authoritative English document is displayed with a fallback notice.
+Profiles are selected explicitly. Plaintext cookie values are recovered only in browser memory when the unlocked vault is used for a DLP request, then encrypted again for that specific worker before leaving the browser.
 
-Translation catalogs are reviewed as JSON pull requests. See the [translation guide](/translating/) for the `source` and `translation` format.
+## Languages
 
-The About diagnostics view is generated on demand. It exposes the public Web revision, sanitized API build manifest, coarse browser/device feature flags, viewport class, and generic processing state. Its copy action omits source URLs, media titles, profile data, custom origins, IP addresses, secrets, and the full browser user agent.
+English (`en`) and Ukrainian (`uk`) are currently active interface languages. The server resolves locale from `pinchana_locale` first and `Accept-Language` second. English is the default.
 
-Clearing site data removes preferences, consent state, selected custom instance, and verification session. Downloaded files are outside Pinchana storage and remain wherever the browser saved them.
+English and Ukrainian are also currently approved legal locales. Translation catalogs are ordinary JSON files in `messages/app` and `messages/legal`.
+
+## Diagnostics
+
+The About view shows the public Web revision, sanitized API build manifest, active service count, DLP capability state, session state, generic activity, and coarse device/browser information.
+
+The copy action intentionally excludes submitted URLs, media titles/metadata, Cookie Vault contents, custom API origins, secrets, IP addresses, and the full browser user agent.
+
+Clearing browser site data removes these preferences, sessions, selected instance state, locale choice, and Cookie Vault data. Files already saved through the browser download manager are unaffected.

@@ -1,10 +1,13 @@
 # Pinchana Docs
 
-The English documentation hub for Pinchana Web, API, DLP, and project contributors. It is an Astro Starlight site published at <https://docs.pinchana.cc>.
+Documentation for the public Pinchana API and Pinchana Web projects. The site is built with Astro Starlight and published at <https://docs.pinchana.cc>.
+
+This repository intentionally does **not** document private or closed-source clients. Product documentation here is scoped to:
+
+- [`Pinchana/pinchana-api`](https://github.com/Pinchana/pinchana-api) — the public gateway, scraper modules, DLP stack, deployment tooling, and release process.
+- [`Pinchana/pinchana-web`](https://github.com/Pinchana/pinchana-web) — the public Next.js browser client and its same-origin backend-for-frontend.
 
 ## Local development
-
-Install dependencies with Bun, then use Astro's background development mode:
 
 ```sh
 bun install --frozen-lockfile
@@ -14,30 +17,27 @@ bunx astro dev logs
 bunx astro dev stop
 ```
 
-Use `bun run dev:foreground` only when an attached foreground server is useful.
+Use `bun run dev:foreground` when you need an attached Astro process.
 
-## Authoring
-
-Documentation lives in `src/content/docs/`. The component-oriented folders are `start`, `web`, `api`, `dlp`, `translating`, `self-hosting`, and `deployment`. Use lowercase kebab-case filenames, one H1 supplied by frontmatter, descriptive link text, and language tags on code fences. Use Starlight Cards, Steps, Tabs, and asides only when they improve comprehension.
-
-Treat the repositories as the source of truth. Before documenting a command or default, check the current Compose file, environment example, runtime validation, and operational scripts. Keep the quickstart linear and link to reference pages for exhaustive options instead of maintaining two competing setup procedures.
-
-Document current behavior from source. Mark every credential as a placeholder; never add API keys, Turnstile secrets, WireGuard keys, certificates, Spotify credentials, or cookies. Do not paste rendered Compose configuration into issues or pull requests because it can contain interpolated secrets. Use these canonical origins:
-
-- Web: `https://pinchana.cc`
-- API: `https://api.pinchana.cc`
-- Docs: `https://docs.pinchana.cc`
-
-Before submitting changes:
+## Validation
 
 ```sh
 bun run check
 bun run build
 ```
 
-The build is fully static and requires no API or Web service at runtime. Production hosting uses `docker-compose.yml`: a one-shot Bun service builds into a named volume and Nginx serves it on `127.0.0.1:4321` by default.
+The docs build is static and does not need a running API or Web deployment.
 
-```sh
-docker compose up --detach
-docker compose ps
-```
+## Authoring rules
+
+Documentation lives in `src/content/docs/`. Before documenting a route, option, environment variable, security boundary, or deployment command, verify the current implementation in the API or Web repository. Repository READMEs are useful summaries, but runtime code, Compose files, `.env.example`, tests, and operational scripts are the final source of truth.
+
+Never commit real API keys, Turnstile secrets, WireGuard keys, cookies, instance signing keys, DLP secrets, Spotify credentials, session tokens, or rendered Compose output containing interpolated secrets.
+
+Canonical public origins used in examples:
+
+- Web: `https://pinchana.cc`
+- API: `https://api.pinchana.cc`
+- Docs: `https://docs.pinchana.cc`
+
+When behavior differs between the normal scrape pipeline and browser-only DLP, document the distinction explicitly instead of describing DLP as a scraper module.

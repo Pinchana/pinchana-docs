@@ -1,32 +1,59 @@
 ---
 title: Browser flow
-description: Identity, Turnstile verification, signed sessions, browser scrape, and browser media routes.
+description: How Pinchana Web establishes a browser session and uses the API without exposing machine credentials.
 ---
 
-import { Steps, Aside } from '@astrojs/starlight/components';
+The browser flow is isolated from machine API-key authentication. Pinchana Web uses Cloudflare Turnstile plus a signed API browser session and keeps the bearer token in an HttpOnly cookie on the Web origin.
 
-Browser routes intentionally use a different credential from machine clients.
+## Default instance flow
 
-<Steps>
-1. **`GET /web/identity`** returns an optional project-issued certificate envelope, `{"payload":"...","signature":"..."}`. It sends `Access-Control-Allow-Origin: *` and `Cache-Control: public, max-age=300`. Missing or invalid configuration returns `503`.
-2. **`POST /web/verify`** accepts `{"token":"ONE_USE_TURNSTILE_TOKEN"}`. The API calls Cloudflare Siteverify with its secret and a new idempotency UUID. Production validation requires `success=true` plus the configured hostname and action. Success returns `{"access_token":"PAYLOAD.SIGNATURE","expires_at":UNIX_SECONDS}`.
-3. **`GET /web/session`** sends `Authorization: Bearer ACCESS_TOKEN` and returns `{"valid":true,"expires_at":UNIX_SECONDS}`.
-4. **`GET /web/build`** is public and returns only validated public source revisions baked into the API image. It contains no environment, network, key, or host data.
-5. **`GET /web/capabilities`** sends the bearer header and advertises optional features. DLP is available only when enabled, correctly configured, and healthy.
-6. **Normal scraper flow:** `POST /v1/web/scrape` sends the same bearer header and scrape request. It returns the normalized API v1 envelope with every `/media/...` value recursively rewritten to `/web/media/...`; `GET /web/media/{platform}/{post_id}/{filename}` streams the cached file. The legacy `/web/scrape` route remains available for older clients.
-7. **Private download flow:** allocate, submit, poll, and stream an asynchronous `/web/dlp/jobs/...` job. YouTube always takes this path in the official client; cookies are optional browser-generated ciphertext. See [Private downloads (DLP)](/api/private-downloads-dlp/).
-</Steps>
+1. Web server reads server-only `PINCHANA_API_URL`.
+2. Browser calls same-origin `GET /api/instance` to obtain browser-safe instance metadata and the public Turnstile site key.
+3. Browser calls `GET /api/session`.
+4. The BFF forwards an existing HttpOnly session token to API `GET /web/session`.
+5. If the session is absent/invalid, Web renders Turnstile with action `turnstile-spin-v1`.
+6. Browser posts the one-use Turnstile token to same-origin `POST /api/verify`.
+7. BFF forwards it to API `POST /web/verify`.
+8. API calls Cloudflare Siteverify with `TURNSTILE_SECRET_KEY`, checks `TURNSTILE_EXPECTED_HOSTNAME` and `TURNSTILE_EXPECTED_ACTION`, and signs a browser session using `TURNSTILE_SESSION_SECRET`.
+9. Web stores that access token in `pinchana_web_session` as an HttpOnly cookie.
+10. The form unlocks.
 
-## Signed session format
+Browser JavaScript never receives the API machine key or the signed bearer token value.
 
-The access token contains a URL-safe base64 JSON payload and an HMAC-SHA256 signature, separated by a period. Claims contain issued-at (`iat`), expiry (`exp`), and a random nonce. `TURNSTILE_SESSION_SECRET` must contain at least 32 characters. Maximum age defaults to 43,200 seconds, is clamped to 60–86,400 seconds, and falls back to the default when unparsable.
+## Scrape flow
 
-```http
-Authorization: Bearer PAYLOAD.SIGNATURE
-```
+After verification:
 
-Invalid, expired, missing, or wrongly signed sessions return `401`. The API does not set cookies itself; the official Next.js BFF puts this token into an HttpOnly, SameSite=Strict cookie and adds the bearer header server-side.
+1. Browser posts `{url}` to Web `POST /api/scrape`.
+2. Web validates the URL and calls API `POST /v1/web/scrape` with the signed bearer token.
+3. API routes the URL through the same normal module selection used by `/v1/scrape`.
+4. API returns the normalized v1 `{data, meta}` response with protected `/web/media/...` URLs.
+5. Web rewrites those media paths to same-origin `/api/media/...`.
+6. Browser previews/downloads the media through the Web proxy.
 
-<Aside type="note">
-Cloudflare's documented test secret keys still require `success=true` but skip hostname/action matching because dummy responses omit production widget metadata.
-</Aside>
+The legacy API `/web/scrape` exists for compatibility but is not the current Web contract.
+
+## Custom instance flow
+
+A custom API adds a certificate verification step before Turnstile:
+
+1. Browser fetches the entered origin's public `/web/identity` certificate.
+2. Web server verifies the Ed25519 signature with `PINCHANA_INSTANCE_PUBLIC_KEY`.
+3. Web validates that the certificate's exact origin and time bounds are valid.
+4. The certified public Turnstile site key becomes the widget key for that selected instance.
+5. Web stores the verified certificate in an HttpOnly instance cookie and clears any old session.
+6. Normal Turnstile/session establishment repeats against the new API.
+
+This prevents arbitrary origins from being selected through client-side settings.
+
+## Capabilities and DLP
+
+Once the session is verified, Web calls same-origin `/api/capabilities`, which proxies API `/web/capabilities`.
+
+If the API advertises DLP protocol v2 as healthy, ordinary YouTube URLs can use the separate DLP job flow. Cookie Vault plaintext, when selected, is encrypted in the browser to the allocated worker and is not decrypted by the Web BFF or gateway.
+
+## Session expiry
+
+The Web session expires according to API-issued expiry. When it becomes invalid, `GET /api/session` returns an unauthorized state and the UI returns to the Turnstile gate.
+
+Switching API instances also clears the current session even if it has not expired, because a session issued by one origin must not be silently reused against another.
