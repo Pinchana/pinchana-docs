@@ -16,7 +16,7 @@ export default defineConfig({
 			social: [
 				{ icon: 'github', label: 'Pinchana on GitHub', href: 'https://github.com/Pinchana' },
 			],
-			customCss: ['./src/styles/custom.css'],
+			customCss: ['./src/styles/custom.css', './src/styles/compact.css'],
 			lastUpdated: true,
 			editLink: {
 				baseUrl: 'https://github.com/Pinchana/pinchana-docs/edit/main/',
